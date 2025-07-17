@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %} 
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %} Flask Webapp {% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <!-- Successivamente ulteriori file CSS o JS specifiche -->
+    {% endblock %}
+</head>
+<body>
+
+<header>
+    <nav>
+        <!-- La tua barra di navigazione va qui -->
+        <ul>
+            <li><a href="{{ url_for('main') }}">Home</a></li>
+            <li><a href="{{ url_for('main', reactPageId='PLOT') }}">Caricamento CSV</a></li>
+            <li><a href="{{ url_for('logout') }}">Logout</a></li>
+            <!-- altri link se necessario -->
+        </ul>
+    </nav>
+</header>
+
+<main>
+    {% block content %}
+    <!-- Il contenuto specifico della pagina verrà inserito qui -->
+    {% endblock %}
+</main>
+
+<footer>
+    <!-- Il footer del tuo sito -->
+    <p>&copy; 2023 Il Mio Sito Flask</p>
+</footer>
+
+</body>
+</html>

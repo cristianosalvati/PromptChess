@@ -1,0 +1,8 @@
+{   
+  "OUT_FOLDER": "output",
+  "DEFAULT_CONFIG_FILE": "config.json",
+  "LOG_LEVEL": "DEBUG",
+  "MAX_TOKENS": 1024,
+  "MODEL": "gpt-4",
+  "API_URL": "http://localhost:5000/chat"
+}

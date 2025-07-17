@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block head %}
+    {{ super() }}
+    <link rel="manifest" href="{{ url_for('static', filename='js/spettanze/manifest.json') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/spettanze/main.10b3d3f5.css') }}" crossorigin="anonymous" />
+    <script defer="defer"  src="{{ url_for('static', filename='js/spettanze/main.12ceee94.js') }}"></script>
+{% endblock %}
+
+{% block title %}
+    React App
+{% endblock %}
+
+{% block content %}
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div>Benvenuto {{ username }}</div>
+    <div id="root"></div>
+    <script src="{{ url_for('static', filename='js/spettanze/config.js') }}"></script>
+    <script type="text/JavaScript">
+        localStorage.setItem("username", "{{ username }}");
+        localStorage.setItem("reactPageId", "{{ reactPageId }}");
+    </script>
+{% endblock %}
