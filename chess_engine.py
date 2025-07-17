@@ -17,15 +17,12 @@ DEFAULT_MODEL = "gpt-4.1-nano"  # Modello predefinito se non specificato
 
 # Mappa dei modelli con i loro ID
 model_map: dict[int, str] = {
-    0: "gpt-4.1-nano", # 0.10
-    1: "gpt-4o-mini",  # 0.15
-    2: "gpt-4.1-mini", # $0.40
-    3: "o1-mini",      # $1.10
+    0: "gpt-4o-mini",  # 0.15
+    1: "gpt-4o",    #$2.50
+    2: "gpt-4.1-nano", # 0.10
+    3: "gpt-4.1-mini", # $0.40
     4: "o4-mini",     # $1.10
-    5: "o3-mini",     # $1.10
-    6: "gpt-4.1",   #$2.00
-    7: "o3",        #$2.00
-    8: "gpt-4o"    #$2.50
+    5: "gpt-4.1"   #$2.00
 }
 
 def get_model_gear(name: str) -> int:
@@ -155,6 +152,7 @@ def init_chatgpt_session(board_state, language='italiano'):
     target = f"""
     Obiettivi:
     - Analizza la mossa proposta dai Bianchi e agisci in risposta. Difendi il Re Nero se è sotto scacco.
+    - Devi proporre una mossa valida per i Neri, seguendo le regole degli scacchi, sia in attacco che in difesa, e rispettando le regole del gioco.
     - Individua e proponi la mossa più efficace per contrastare il gioco dei Bianchi, rispettando le regole e la situazione del gioco.
     """
     

@@ -30,15 +30,10 @@ logger = logging.getLogger(__name__)
 # Definisci la lunghezza massima del contesto per ciascun modello
 DEFAULT_MAX_TOKENS = 16384  # Valore di default se il modello non è specificato
 MODEL_MAX_TOKENS = {
-    "gpt-3.5-turbo": 32768,
-    "o1-mini": 32768,
-    "o3-mini": 32768,
-    "o3": 32768,
-    "o4-mini": 32768,
+    "gpt-4o": 16384,
+    "gpt-4o-mini": 16384,
     "gpt-4": 32768,      # o 32768 se usi la variante 32k
     "gpt-4-turbo": 32768,
-    "gpt-4o": 32768,
-    "gpt-4o-mini": 32768,
     "gpt-4.1": 32768,
     "gpt-4.1-mini": 32768,
     "gpt-4.1-nano": 32768
@@ -190,7 +185,7 @@ class ChatSession:
         # 2) calcola max_tokens in base alla storia
         max_tokens = dynamic_max_tokens(model, self.messages, margin=margin)
 
-        print(f"[DEBUG] Token disponibili per la risposta: {max_tokens}")
+        print(f"[DEBUG] Model: {model} - Token disponibili per la risposta: {max_tokens}")
        
         if max_tokens <= 0:
             raise RuntimeError("Max tokens exceeded.")
