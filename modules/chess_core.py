@@ -237,78 +237,95 @@ def find_checkers(board, player_color='white'):
 
     Accetta player_color in inglese ('white','black') o italiano ('bianchi','neri').
     """
-    # --- 1) Normalizza il colore e identifica simboli ---
+    files = 'abcdefgh'
+
+    # --- 1) Normalize color and symbols ---
     pc = player_color.lower()
     if pc in ('white', 'bianco', 'bianchi'):
-        king_symbol = 'K'; attacker_is_lower = True; opponent_color = 'black'
+        king_symbol = 'K'
+        attacker_is_lower = True
     elif pc in ('black', 'nero', 'neri'):
-        king_symbol = 'k'; attacker_is_lower = False; opponent_color = 'white'
+        king_symbol = 'k'
+        attacker_is_lower = False
     else:
-        raise ValueError(f"Colore non valido: {player_color!r}. Usa 'white/black' o 'bianchi/neri'.")
+        raise ValueError(f"Invalid color: {player_color!r}")
 
-    # --- 2) Trova il re sul board ---
+    # --- 2) Find our king ---
     king_sq = None
-    for file in board.index:
-        for rank in board.columns:
-            if board.at[file, rank] == king_symbol:
-                king_sq = (file, rank)
+    for f in board.index:
+        for r in board.columns:
+            if board.at[f, r] == king_symbol:
+                king_sq = (f, r)
                 break
         if king_sq:
             break
     if not king_sq:
-        raise ValueError(f"Re {player_color} non trovato sulla scacchiera.")
+        raise ValueError(f"King {player_color} not found on board.")
 
     kf, kr = king_sq
     checkers = []
 
-    # --- 3)  Minacce da pedoni ---
-    # direzioni di cattura del pedone avversario
+    # --- 3) Pawn attacks ---
     pawn_dirs = [(-1, 1), (1, 1)] if attacker_is_lower else [(-1, -1), (1, -1)]
     for dx, dy in pawn_dirs:
-        xf = 'abcdefgh'.find(kf) + dx
-        yr = kr + dy
-        if 0 <= xf < 8 and 1 <= yr <= 8:
-            sq = f"{'abcdefgh'[xf]}{yr}"
-            p = board.at[sq[0], yr]
+        x = files.index(kf) + dx
+        y = kr + dy
+        if 0 <= x < 8 and 1 <= y <= 8:
+            sq = f"{files[x]}{y}"
+            p = board.at[files[x], y]
             if p and (p.islower() == attacker_is_lower) and p.lower() == 'p':
                 checkers.append({'from': sq, 'piece': p})
 
-    # --- 4) Minacce da cavallo ---
+    # --- 4) Knight attacks ---
     knight_offsets = [(1,2),(2,1),(-1,2),(-2,1),(1,-2),(2,-1),(-1,-2),(-2,-1)]
     for dx, dy in knight_offsets:
-        xf = 'abcdefgh'.find(kf) + dx
-        yr = kr + dy
-        if 0 <= xf < 8 and 1 <= yr <= 8:
-            sq = f"{'abcdefgh'[xf]}{yr}"
-            p = board.at[sq[0], yr]
+        x = files.index(kf) + dx
+        y = kr + dy
+        if 0 <= x < 8 and 1 <= y <= 8:
+            sq = f"{files[x]}{y}"
+            p = board.at[files[x], y]
             if p and (p.islower() == attacker_is_lower) and p.lower() == 'n':
                 checkers.append({'from': sq, 'piece': p})
 
-    # --- 5) Scansioni ortogonali e diagonali per torri/alfieri/regine e re ---
+    # --- 5) King attacks (only adjacent squares) ---
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if dx == 0 and dy == 0:
+                continue
+            x = files.index(kf) + dx
+            y = kr + dy
+            if 0 <= x < 8 and 1 <= y <= 8:
+                sq = f"{files[x]}{y}"
+                p = board.at[files[x], y]
+                if p and (p.islower() == attacker_is_lower) and p.lower() == 'k':
+                    checkers.append({'from': sq, 'piece': p})
+
+    # --- 6) Rook/Bishop/Queen sliders ---
     directions = {
         'rook':   [(1,0),(-1,0),(0,1),(0,-1)],
         'bishop': [(1,1),(1,-1),(-1,1),(-1,-1)],
     }
     for kind, dirs in directions.items():
         for dx, dy in dirs:
-            xf = 'abcdefgh'.find(kf) + dx
-            yr = kr + dy
-            while 0 <= xf < 8 and 1 <= yr <= 8:
-                sq = f"{'abcdefgh'[xf]}{yr}"
-                p = board.at[sq[0], yr]
+            x = files.index(kf) + dx
+            y = kr + dy
+            # advance along the ray until we hit a piece or edge
+            while 0 <= x < 8 and 1 <= y <= 8:
+                sq = f"{files[x]}{y}"
+                p = board.at[files[x], y]
                 if p:
-                    # è avversario?
                     if p.islower() == attacker_is_lower:
                         low = p.lower()
-                        # se è torre/regina in ortogonale, o alfiere/regina in diagonale
-                        if (kind=='rook'   and low in ('r','q')) or \
-                           (kind=='bishop' and low in ('b','q')):
+                        # orthogonal ray: rook or queen
+                        if kind == 'rook'   and low in ('r','q'):
                             checkers.append({'from': sq, 'piece': p})
-                        # re avversario: minaccia sul passo singolo
-                        if (abs(dx)==1 or abs(dy)==1) and low=='k':
+                        # diagonal ray: bishop or queen
+                        if kind == 'bishop' and low in ('b','q'):
                             checkers.append({'from': sq, 'piece': p})
+                    # stop scanning this direction once we see any piece
                     break
-                xf += dx; yr += dy
+                x += dx
+                y += dy
 
     return checkers
 
