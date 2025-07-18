@@ -306,6 +306,8 @@ def warn_if_in_check(board, color, detect_ai_move = None):
     """
     warn_message = None
 
+    checkers = []  # Lista dei pezzi che attaccano il re del colore specificato
+
     try:
         checkers = find_checkers(board, color) # Trova i pezzi che attaccano il re del colore specificato
         if len(checkers) > 0 and detect_ai_move is not None: 
@@ -333,7 +335,7 @@ def play_match(config, json_board, execution_id, is_human_turn):
     # print(f"Configurazione partita: {config}")
     CURRENT_MODEL = DEFAULT_MODEL  # Modello attualmente in uso
     START_TIME = datetime.now()
-    TIME_LIMIT = timedelta(minutes=30)
+    TIME_LIMIT = timedelta(minutes=45)
     RETRY_TIME = 3
     retry_count = 0
     max_retries = 2
@@ -360,6 +362,8 @@ def play_match(config, json_board, execution_id, is_human_turn):
                 continue
 
             piece_code, from_sq, to_sq = user_input
+            from_sq = from_sq.lower() # TOLGO EVENTUALI MAIUSCOLE
+            to_sq = to_sq.lower()
             # Verifica che il pezzo esista davvero in from_sq
             file_from, rank_from = from_sq[0], int(from_sq[1])
             if board_prev.at[file_from, rank_from] != piece_code:
@@ -448,12 +452,12 @@ def play_match(config, json_board, execution_id, is_human_turn):
                     move = payload.get('mossa_proposta', None)
                     # ad una prima analisi la differenza tra lo stato della scacchiera successivamente alla mossa proposta da assistant non sembra corretta
                     if move is not None:
+                        move = move.replace("x", "-").lower().strip() # rimuovo eventuali x che non sono necessarie
                         board_feedback_message += f" Assistant (Black) propose the move: '{move}', but something seems not coherent with the board definition."
                         if boards_equal(board_prev, board_next):
                             # se sono uguali probabilmente assistant non ha aggiornato la board_next, facciamolo noi e istruiamolo       
                             if move is not None and '-' in move:
                                 try:
-                                    move = move.replace("x", "-").strip() # rimuovo eventuali x che non sono necessarie
                                     from_sq, to_sq = move.split('-')
                                     if is_legal_move(None, from_sq, to_sq, board_prev, "black"):
                                         # applichiamo la mossa proposta da assistant
@@ -478,7 +482,7 @@ def play_match(config, json_board, execution_id, is_human_turn):
                         computer_response = None
                         continue
 
-                    print(f"[DEBUG] Response from ChatGpt: {json.loads(computer_response).get('commento_giocatore', '{}')}")
+                    print(f"[DEBUG] Response from ChatGpt: '{json.loads(computer_response).get('commento_giocatore', '{}')}'")
                     if retry_count > 2:
                         send_message_to_proxy_service(role="user", content=f"[CONGRATULATIONS! Assistant (Black) played last move with success.]")
             

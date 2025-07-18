@@ -73,7 +73,7 @@ def dynamic_max_tokens(model: str, messages: list[dict], margin: int = 100) -> i
 
 class ChatSession:
 
-    def __init__(self, client, max_history=100):
+    def __init__(self, client, max_history=128):
         self.client = client
         # Messaggio di sistema iniziale
         self.messages = []
