@@ -407,8 +407,6 @@ def play_match(config, json_board, execution_id, is_human_turn):
                     time.sleep(RETRY_TIME)
                     continue
 
-                save_content_in_file(computer_response, "resources/responses", f"chat-{execution_id}")
-
                 # Prova a riparare il JSON se necessari
                 try:
                     computer_response = repair_json_board(computer_response)    
@@ -482,7 +480,11 @@ def play_match(config, json_board, execution_id, is_human_turn):
                         computer_response = None
                         continue
 
+                    # TODO il salvataggio della risposta in un file è opzionale, andrebbe storicizzato in un database
+                    save_content_in_file(computer_response, "resources/responses", f"chat-{execution_id}")
+
                     print(f"[DEBUG] Response from ChatGpt: '{json.loads(computer_response).get('commento_giocatore', '{}')}'")
+                    
                     if retry_count > 2:
                         send_message_to_proxy_service(role="user", content=f"[CONGRATULATIONS! Assistant (Black) played last move with success.]")
             

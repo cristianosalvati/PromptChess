@@ -1,4 +1,5 @@
 import pandas as pd
+import json
 
 def json_to_board(data):
     """
@@ -229,6 +230,41 @@ def detect_move(prev_board: pd.DataFrame, curr_board: pd.DataFrame):
     
     return piece, from_sq, to_sq
 
+def show_board(board):
+    """
+    Stampa la board con sfondo alternato e pezzi bianchi/neri colorati distintamente:
+    - Pezzi bianchi (maiuscoli) in bright white (97)
+    - Pezzi neri (minuscoli) in bright black (90)
+    """
+    files = 'abcdefgh'
+    light_bg = '47'   # bianco
+    dark_bg  = '100'  # grigio scuro
+    reset    = '\033[0m'
+    fg_white = '97'   # bright white
+    fg_black = '30'   # bright black
+    fg_empty = '39'   # default
+
+    print("\n")
+    for rank in range(8, 0, -1):
+        row = f"{rank} "
+        for i, file in enumerate(files):
+            piece = board.at[file, rank] or ' '
+            bg = light_bg if (i + rank) % 2 == 0 else dark_bg
+
+            if piece.isupper():      # pezzo bianco
+                fg = fg_white
+            elif piece.islower():    # pezzo nero
+                fg = fg_black
+            else:                    # vuoto
+                fg = fg_empty
+
+            cell = f"\033[{fg};{bg}m {piece} {reset}"
+            row += cell
+        print(row)
+    footer = "   " + "".join(f" {f} " for f in files)
+    print(footer)
+    print("\n")
+
 def find_checkers(board, player_color='white'):
     """
     Data una pandas DataFrame 'board' (files 'a'-'h', colonne 1-8),
@@ -343,6 +379,58 @@ def is_game_active(board) -> bool:
     has_white_king = 'K' in pieces
     has_black_king = 'k' in pieces
     return has_white_king and has_black_king
+                     
+def repair_json_board(json_board):
+    
+    raw = json_board.strip()
+
+    # 1) Rimuovi eventuali code fences
+    if raw.startswith("```"):
+        # rimuove tutti i backtick e la parola json
+        raw = raw.strip("`").replace("json", "", 1).strip()
+
+    # 2) Controlla quante graffe mancano e aggiungile
+    open_braces  = raw.count("{")
+    close_braces = raw.count("}")
+    if open_braces > close_braces:
+        raw += "}" * (open_braces - close_braces)
+
+    # 3) Tenta il parsing
+    try:
+        data = json.loads(raw)
+    except Exception as e:
+        print("Malformed JSON:", e)
+        # qui puoi loggare `raw` per debug
+        raise
+
+    return json.dumps(data, indent=4, ensure_ascii=False)
+
+def warn_if_in_check(board, color, detect_ai_move = None):
+    """
+    Controlla se il re bianco è sotto scacco: se sì stampa un avviso con i pezzi che lo attaccano.
+    """
+    warn_message = None
+
+    checkers = []  # Lista dei pezzi che attaccano il re del colore specificato
+
+    try:
+        checkers = find_checkers(board, color) # Trova i pezzi che attaccano il re del colore specificato
+        if len(checkers) > 0 and detect_ai_move is not None: 
+            piece, from_sq, to_sq = detect_ai_move[0], detect_ai_move[1], detect_ai_move[2]
+            if is_legal_move(piece, from_sq, to_sq, board, color):
+                check_board = apply_move(piece, from_sq, to_sq, board)
+                checkers_l2 = find_checkers(check_board, color)
+                if not checkers_l2:
+                    checkers = []  # Se la mossa proposta non lascia il re in scacco, resetta i checkers
+    except ValueError as e:
+        print(f"Error: {e}")
+        warn_message = f"Error: {e}"
+
+    if checkers:
+        attackers = ", ".join(f"{c['piece']} da {c['from']}" for c in checkers)
+        warn_message = (f"{color.capitalize()} king is under attack: {attackers}")
+
+    return warn_message
 
 def game_result(board) -> str:
     """

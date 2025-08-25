@@ -34,6 +34,9 @@ The core engine, **chess\_engine.py**, handles game logic and move validation. T
 * Move legality checks and check/checkmate detection
 * AI-driven move generation via OpenAI chat completions
 * Configurable OpenAI model, temperature, and token limits
+* Multi-system messages for separating rules, JSON format, and objectives
+* Dynamic token budgeting to maximize context without exceeding OpenAI API limits
+* Session management with a sliding window of messages and pop/append endpoints in openai_proxy_service.py
 * Detailed move commentary and opponent feedback
 
 ## Architecture
