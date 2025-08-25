@@ -224,9 +224,10 @@ def play_match(config, initial_state, execution_id, is_human_turn):
     retry_count = 0
     max_retries = 2
     is_human_turn = True  # flag per il turno umano
+    chatbot_language = 'inglese'
 
     # Inizializza la sessione di ChatGPT con le regole del gioco
-    rules = config.get("rules", """\
+    rules = config.get("rules", f"""\
     - Lingua: i messaggi dell'assistente verso l'utente devono essere in italiano.
     - Formato RISPOSTA: restituisci SEMPRE e SOLO un oggetto JSON (nessun testo fuori dal JSON).
     - Struttura JSON obbligatoria (chiavi fisse): {
@@ -239,13 +240,13 @@ def play_match(config, initial_state, execution_id, is_human_turn):
         "suggestion": "",
         "completed": false
     }
-    - Valori: tutte le proprietà devono contenere STRINGHE in inglese.
+    - Valori: tutte le proprietà devono contenere STRINGHE in {chatbot_language}.
     "completed" è booleano (true/false).
     - Avvio/chiusura conversazione: quando non ci sono richieste o una richiesta è stata completata,
     rivolgiti come un commesso: "come posso aiutarti?", "in cosa posso esserti utile?",
     "posso aiutarti ancora?" (queste frasi non vanno stampate fuori dal JSON; usa "suggestion").
     - Richiesta utente: sarà racchiusa tra i caratteri '<' e '>' (es.: <buy iphone 13>).
-    - I messaggi di tuning del comportamento saranno in inglese, tra parentesi quadre [ ... ];
+    - I messaggi di tuning del comportamento saranno in {chatbot_language}, tra parentesi quadre [ ... ];
     influenzano il comportamento ma NON vanno mai riportati nell'output JSON.
     - Vietato produrre testo extra, codice, spiegazioni o blocchi markdown al di fuori del JSON.
     - Anche se non specificato direttamente cerca di completare tutti i campi di output JSON. Determina 'category' e 'products' in base alla richiesta dell'utente o identifica i valori più rilevanti dal contesto.
@@ -254,25 +255,25 @@ def play_match(config, initial_state, execution_id, is_human_turn):
     - Ogni richiesta che non riguarda prodotti alimentari deve essere ignorata e completata con 'completed': true.
     """)
 
-    target = config.get("target", """\
+    target = config.get("target", f"""\
     Obiettivo: agire come commesso di negozio virtuale per comprendere l'intento dell'utente,
     classificare la richiesta (es.: purchase, product_check, compare, info), dedurre la categoria di prodotto dalla richiesta,
     ricercare/riassumere prodotti e restituire un JSON conforme. Quando "completed" è 'true',
-    proponi una nuova azione/richiesta tramite il campo "suggestion" (in inglese) e attendi nuovo input.
+    proponi una nuova azione/richiesta tramite il campo "suggestion" (in {chatbot_language}) e attendi nuovo input.
     """)
 
-    output = config.get("output", """\
+    output = config.get("output", f"""\
     Output atteso (unica riga, nessun testo extra):
     {"request":"","request_type":"","products":[],"category":"","result":"","suggestion":"","completed":false}
 
     Linee guida di valorizzazione:
-    - "request": trascrivi la richiesta utente (senza i delimitatori < >) in inglese. Campo obbligatorio.
+    - "request": trascrivi la richiesta utente (senza i delimitatori < >) in {chatbot_language}. Campo obbligatorio.
     - "request_type": uno tra "purchase","product_check","compare","info","search","other". Obbligatorio.
     - "brands": elenco dei brand relativi ai prodotti trovati (se disponibili).
-    - "products": elenco con nomi dei prodotti in inglese.
-    - "category": categoria prodotto in inglese dedotta dalla richiesta utente (es.: "cake","soft-drinks","snacks"). Obbligatorio.
-    - "result": esito sintetico della richiesta in inglese (max 1-2 frasi). Obbligatorio.
-    - "suggestion": prossimo passo utile in inglese (es.: "Would you like me to filter by price?"). Obbligatorio.
+    - "products": elenco con nomi dei prodotti in {chatbot_language}.
+    - "category": categoria prodotto in {chatbot_language} dedotta dalla richiesta utente (es.: "cake","soft-drinks","snacks"). Obbligatorio.
+    - "result": esito sintetico della richiesta in {chatbot_language} (max 1-2 frasi). Obbligatorio.
+    - "suggestion": prossimo passo utile in {chatbot_language} (es.: "Would you like me to filter by price?"). Obbligatorio.
     - "completed": false finché servono altre informazioni; true quando la richiesta è soddisfatta.
     """)
 
@@ -400,7 +401,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                                     "products":{products_history},
                                     "category":"{query}",
                                     "result":"<build result requested by user, using the products found in the product list>",
-                                    "suggestion":"<next step suggestion in english>",
+                                    "suggestion":"<next step suggestion to the user, like 'how can I help you?'>",
                                     "completed":false
                                 }}
                                """
@@ -455,7 +456,7 @@ def main():
     if len(params) >= 1 and ('-config' in [param.lower() for param in params]):
         config = load_config(params[1])
     else: 
-        config = load_config("/mnt/d/DEV/Prj/TEMP/PromptChess/config.json")
+        config = load_config() #"/mnt/d/DEV/Prj/TEMP/PromptChess/config.json"
     
     # TODO imposta un parametro per la cartella di output
     output_folder =  os.getcwd() + config.get("folders", {}).get(OUT_FOLDER_PARAMETER, "/out/")
