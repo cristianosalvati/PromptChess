@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import re
 import requests
 import uuid
 import random
@@ -211,6 +212,19 @@ def send_message_to_chat(prompt_text, model: str = DEFAULT_MODEL,
         print(f"[DEBUG] ChatGPT error response: {response_data}")
         return None
    
+def sanitize_json_string(json_string):
+    """
+    Tenta di riparare una stringa JSON che contiene virgolette non escapate.
+    ATTENZIONE: È una soluzione euristica, non perfetta.
+    """
+    # Rimuove caratteri di controllo non stampabili
+    json_string = re.sub(r"[\x00-\x1F\x7F]", "", json_string)
+
+    # Sostituisce doppie virgolette erronee (es: "... \" ... \"" --> corretti)
+    json_string = re.sub(r'(?<!\\)"(?![:,{}\[\]\s])', r'\\"', json_string)
+
+    return json_string
+
 def play_match(config, initial_state, execution_id, is_human_turn):
 
     print(f"Game start! - Version n. {VERSION}")
@@ -225,12 +239,15 @@ def play_match(config, initial_state, execution_id, is_human_turn):
     max_retries = 2
     is_human_turn = True  # flag per il turno umano
     chatbot_language = 'inglese'
+    most_relevant_items_num = 10
+    max_products_per_category = 5
+    total_max_products = 50
 
     # Inizializza la sessione di ChatGPT con le regole del gioco
     rules = config.get("rules", f"""\
     - Lingua: i messaggi dell'assistente verso l'utente devono essere in italiano.
     - Formato RISPOSTA: restituisci SEMPRE e SOLO un oggetto JSON (nessun testo fuori dal JSON).
-    - Struttura JSON obbligatoria (chiavi fisse): {
+    - Struttura JSON obbligatoria (chiavi fisse): {{
         "request": "",
         "request_type": "",
         "brands": [],
@@ -239,7 +256,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
         "result": "",
         "suggestion": "",
         "completed": false
-    }
+    }}
     - Valori: tutte le proprietà devono contenere STRINGHE in {chatbot_language}.
     "completed" è booleano (true/false).
     - Avvio/chiusura conversazione: quando non ci sono richieste o una richiesta è stata completata,
@@ -250,8 +267,9 @@ def play_match(config, initial_state, execution_id, is_human_turn):
     influenzano il comportamento ma NON vanno mai riportati nell'output JSON.
     - Vietato produrre testo extra, codice, spiegazioni o blocchi markdown al di fuori del JSON.
     - Anche se non specificato direttamente cerca di completare tutti i campi di output JSON. Determina 'category' e 'products' in base alla richiesta dell'utente o identifica i valori più rilevanti dal contesto.
-      Le categorie sono parole concatenate da trattini e spesso iniziano il codice lingua seguito dai due punti (es.: "en:soft-drinks", "en:chocolate-bars")
-    - Se non riesci a completare la richiesta, imposta 'completed' a 'true'
+      Le categorie sono parole concatenate da trattini e spesso iniziano il codice lingua seguito dai due punti (es.: "en:soft-drinks", "en:chocolate-bars").
+    - Se non riesci a completare la richiesta, imposta 'completed' a 'true'.
+    - il numero di elementi in 'products' deve essere limitato a {total_max_products}.
     - Ogni richiesta che non riguarda prodotti alimentari deve essere ignorata e completata con 'completed': true.
     """)
 
@@ -264,11 +282,17 @@ def play_match(config, initial_state, execution_id, is_human_turn):
 
     output = config.get("output", f"""\
     Output atteso (unica riga, nessun testo extra):
-    {"request":"","request_type":"","products":[],"category":"","result":"","suggestion":"","completed":false}
+    {{"request":"","request_type":"","products":[],"category":"","result":"","suggestion":"","completed":false}}
 
     Linee guida di valorizzazione:
     - "request": trascrivi la richiesta utente (senza i delimitatori < >) in {chatbot_language}. Campo obbligatorio.
     - "request_type": uno tra "purchase","product_check","compare","info","search","other". Obbligatorio.
+        Se "purchase" nella chat il campo "products" deve contenere almeno un prodotto.
+        Se "info" allora le informazioni sono da reperire all'interno della chat (non serve cercare prodotti) se la lista dei prodotti è valorizzata con almeno {most_relevant_items_num} elementi, altrimenti bisogno utilizzare "search".
+        Se "search" allora l'utente vuole cercare prodotti
+        Se "product_check", "compare" allora nella chat deve essere presente il 'products detail' (brand, ingredients, allergens).
+        Se "other" allora la richiesta non rientra in nessuna delle precedenti categorie, l'assistente deve proporre in 'suggestion' una nuova richiesta all'utente.
+        Se non riesci a classificare la richiesta, usa "other".
     - "brands": elenco dei brand relativi ai prodotti trovati (se disponibili).
     - "products": elenco con nomi dei prodotti in {chatbot_language}.
     - "category": categoria prodotto in {chatbot_language} dedotta dalla richiesta utente (es.: "cake","soft-drinks","snacks"). Obbligatorio.
@@ -332,9 +356,18 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                     # print(f"[DEBUG] Found category slugs: {slugs}")
                     products = []
                     seen = set()
+                    stop_loading = False
 
                     for slug in slugs:
-                        for p in list_products_for_category(slug):  # recupera i prodotti per ogni categoria trovata
+                        if stop_loading:
+                            # print(f"[INFO] max product threshold {total_max_products} reached.")
+                            break
+
+                        for p in list_products_for_category(slug, page_size=max_products_per_category):
+                            if len(products) >= total_max_products:
+                                stop_loading = True
+                                break  # esce solo dal ciclo interno
+
                             code = p.get("code")
                             if code and code not in seen:
                                 seen.add(code)
@@ -345,8 +378,9 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                     products.sort(key=lambda x: (x.get("product_name") or "").lower())
 
                     if last_request_type not in ("search", "other") and products:
-                        products = products[:10]  # Limita a 10 prodotti
+                        products = products[:most_relevant_items_num]  # Limita a most_relevant_items_num prodotti
 
+                    # TODO limitare la storia ad un certo numero di elementi, i primi arrivati vanno rimossi
                     brand_history = list(set(p.get("brands", "") for p in products if p.get("brands")))
                     products_history = list(set(p.get("product_name", "") for p in products if p.get("product_name")))
 
@@ -356,8 +390,10 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                         # print(f"[DEBUG] No products found for category slugs: {slugs}")
                     else:
                         # print(f"[DEBUG] Found products: {products}")
-                        if len(products) > 10:
-                            message = f"Too many products: found {len(products)} for categories list '{slugs}'. Update the JSON field 'products' with the most relevant items in the product list: ({', '.join(p['product_name'] for p in products if 'product_name' in p)}). Update the JSON 'category' field with the most useful and specific element in the list: ({', '.join(slugs)})."
+                        if len(products) > most_relevant_items_num:
+                            message = f"Too many products: found {len(products)} for categories list '{slugs}'. Update the JSON field 'products' with the most relevant items in the product set: ({products_history}). Update the JSON 'category' field with the most useful and specific element in the set: ({', '.join(slugs)})."
+                            # filtro caratteri strani prima di inviare il messaggio 
+                            message = message.replace(', ,', '')
                             append_message_to_chat(role="user", content=f"[{message}]")
                         else:
                             message = f"Found {len(products)} products in category '{slugs}'. Update the JSON field 'result' with information requested by the user. Update the JSON field 'products' with the most relevant items in the product list: {', '.join(p['product_name'] for p in products if 'product_name' in p)}. Update the JSON 'category' field with the most useful and specific element in the list: {', '.join(slugs)}."
@@ -371,12 +407,15 @@ def play_match(config, initial_state, execution_id, is_human_turn):
 
                                     if product_name and brand:
                                         message += (
-                                            f"Found product details for '{product_name}': "
+                                            f"Found 'product details' for '{product_name}': "
                                             f"brand '{brand}' with code '{p['code']}'. "
                                             f"Ingredients: {detail.get('ingredients', 'N/A')}, "
                                             f"Allergens: {detail.get('allergens', 'N/A')}. "
                                             f"Suggest to the user the most relevant product's details (brand, ingredients, allergens)."
                                             )
+                            
+                            # filtro caratteri strani prima di inviare il messaggio TODO definire una funzione
+                            message = message.replace(', ,', '')
                             append_message_to_chat(role="user", content=f"[{message}]")
 
             is_human_turn = False  # passa il turno all'assistente
@@ -419,12 +458,22 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                     try:
                         content = json.loads(computer_response)
                     except json.JSONDecodeError as e:
-                        # TODO: potrebbe essere necessario riparare il JSON
-                        print(f"[ERROR] JSONDecodeError: {e}. Response was: {computer_response}")
-                        remove_last_assistant_message()
-                        computer_response = None
-                        time.sleep(RETRY_TIME)
-                        continue
+                        # potrebbe essere necessario riparare il JSON
+                        print(f"[WARNING] JSONDecodeError: {e}. trying sanification...")
+
+                        # Prova a riparare il JSON
+                        fixed = sanitize_json_string(computer_response)
+
+                        try:
+                            content = json.loads(fixed)
+                            print("[INFO] JSON repaired successfully.")
+                        except json.JSONDecodeError as e2:
+                            print(f"[ERROR] fail to repair: {e2}")
+                            print(f"[DEBUG] Original response was: {computer_response[:500]}")
+                            remove_last_assistant_message()
+                            computer_response = None
+                            time.sleep(RETRY_TIME)
+                            continue
 
                     # Estrai i campi
                     products = content.get("products", [])
@@ -433,9 +482,9 @@ def play_match(config, initial_state, execution_id, is_human_turn):
 
                     product_list_str = "\n".join(f"- {p}" for p in products)
 
-                    print(f"\033[34mResponse from ChatGpt:\n{result}\n{product_list_str}\n{suggestion}\033[0m")
+                    print(f"\033[34mResponse from ChatGpt:\n{product_list_str}\n{result}\n{suggestion}\033[0m")
 
-                    if retry_count > 2:
+                    if retry_count > max_retries:
                         append_message_to_chat(role="user", content=f"[CONGRATULATIONS! Assistant proposed a great suggestion.]")
             
             if computer_response is not None:
