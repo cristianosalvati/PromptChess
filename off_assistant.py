@@ -6,6 +6,7 @@ import requests
 import uuid
 import random
 import time
+from collections import deque
 from datetime import datetime, timedelta
 from modules.version import VERSION
 from utils.app_utils import load_config 
@@ -25,6 +26,21 @@ model_map: dict[int, str] = {
     4: "o4-mini",     # $1.10
     5: "gpt-4.1"   #$2.00
 }
+
+STATE_TEMPERATURES = {
+    "search": (0.84, 0.96) ,  # es. per ricerca prodotti
+    "product_check": (0.40, 0.50),   # es. per verificare ingredienti/allergeni
+    "info": (0.40, 0.50),   # es. per informazioni generali
+    "purchase": (0.5, 0.65),
+    "compare": (0.45, 0.55),
+    "other": (0.45, 0.50),
+   # "clarify": (0.5, 0.8),   # es. per disambiguazioni
+   # "confirm": (0.2, 0.4),   # es. prima di completare
+}
+
+def get_temperature_for_state(state):
+    min_temp, max_temp = STATE_TEMPERATURES.get(state, (0.40, 0.50))
+    return round(random.uniform(min_temp, max_temp), 2)
 
 def get_model_gear(name: str) -> int:
     """
@@ -116,7 +132,7 @@ def init_chatgpt_session(rules, target, output, language='italiano'):
     # 2. Chiama l’endpoint /chat/init
     resp = requests.post(
         "http://localhost:5000/chat/init",
-        json={"system_messages": system_messages},
+        json={"system_messages": system_messages, "language": language},
         headers={"Content-Type": "application/json"}
     )
     print("Let's start ChatGPT Session...")
@@ -192,7 +208,8 @@ def send_message_to_chat(prompt_text, model: str = DEFAULT_MODEL,
     payload = {
         "prompt": prompt_text,
         "model": model,
-        "temperature": temperature
+        "temperature": temperature, 
+        "language": language
     }
 
     # 4. Invia la richiesta al tuo Flask server in ascolto su localhost:5000
@@ -239,9 +256,9 @@ def play_match(config, initial_state, execution_id, is_human_turn):
     max_retries = 2
     is_human_turn = True  # flag per il turno umano
     chatbot_language = 'inglese'
-    most_relevant_items_num = 10
+    most_relevant_items_num = 8
     max_products_per_category = 5
-    total_max_products = 50
+    total_max_products = 30
 
     # Inizializza la sessione di ChatGPT con le regole del gioco
     rules = config.get("rules", f"""\
@@ -305,9 +322,12 @@ def play_match(config, initial_state, execution_id, is_human_turn):
     init_chatgpt_session(rules, target, output, language='italiano')
 
     last_query = ""
-    products_history = []
-    brand_history = []
+    # products_history = []
+    products_history = deque(maxlen=total_max_products)  # Mantiene solo gli ultimi 50 prodotti
+    # brand_history = []
+    brand_history = deque(maxlen=total_max_products)  # Mantiene solo gli ultimi 50 brand
     last_request_type = ""
+    current_temperature = 0.5
 
     while not time_exceeded(START_TIME, TIME_LIMIT):
     
@@ -318,7 +338,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                 print("Invalid input, please provide a complete request.")
                 continue
 
-            response = send_message_to_chat(prompt_text=f"<{user_input}>", model=CURRENT_MODEL,)
+            response = send_message_to_chat(prompt_text=f"<original request:{user_input}>", model=CURRENT_MODEL, temperature=current_temperature)
 
             if response is None:
                 print("[DEBUG] No response from ChatGPT. Retrying...")
@@ -329,7 +349,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
             payload = json.loads(response)          # -> dict Python
             query = payload.get('category', '').replace('-', ' ').strip()
             
-            # Gestione della query e momorizzazione dell'ultima query valida 
+            # Gestione della query e momorizzazione dell'ultima query valida, riumovere categorie con meno di 3 caratteri
             if query and query != last_query:
                 last_query = query
             elif not query and last_query:
@@ -378,11 +398,19 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                     products.sort(key=lambda x: (x.get("product_name") or "").lower())
 
                     if last_request_type not in ("search", "other") and products:
-                        products = products[:most_relevant_items_num]  # Limita a most_relevant_items_num prodotti
+                        products = products[:most_relevant_items_num - retry_count]  # Limita a most_relevant_items_num prodotti, riducendone ad ogni retry (cercando di stringere il campo 'result')
 
-                    # TODO limitare la storia ad un certo numero di elementi, i primi arrivati vanno rimossi
-                    brand_history = list(set(p.get("brands", "") for p in products if p.get("brands")))
-                    products_history = list(set(p.get("product_name", "") for p in products if p.get("product_name")))
+                    # brand_history.update(p.get("brands", "") for p in products if p.get("brands"))
+                    # products_history.update(p.get("product_name", "") for p in products if p.get("product_name"))
+
+                    # limita la storia ad un certo numero di elementi, i primi arrivati vanno rimossi
+                    for name in (p.get("product_name", "") for p in products if p.get("product_name")):
+                        if name not in products_history:
+                            products_history.append(name)
+
+                    for brand in (p.get("brands", "") for p in products if p.get("brands")):
+                        if brand not in brand_history:
+                            brand_history.append(brand)
 
                     if not products:
                         message = f"No products found for the category: '{slugs}'. Please try again with a different category."
@@ -391,12 +419,12 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                     else:
                         # print(f"[DEBUG] Found products: {products}")
                         if len(products) > most_relevant_items_num:
-                            message = f"Too many products: found {len(products)} for categories list '{slugs}'. Update the JSON field 'products' with the most relevant items in the product set: ({products_history}). Update the JSON 'category' field with the most useful and specific element in the set: ({', '.join(slugs)})."
-                            # filtro caratteri strani prima di inviare il messaggio 
+                            message = f"Too many products: found {len(products)} for the selected categories, please reduce the number of products updating the JSON field 'products' with the most relevant {most_relevant_items_num - retry_count} items in the products set: {list(products_history)}. Update the JSON 'category' field with the most useful and specific element in the set, related to the selected products: [{', '.join(slugs)}]. Get a related 'result' for the original user request with a concise summary (1-2 sentences). Suggest to the user next steps in the 'suggestion' field to refine the request or get more details about the products found."
+                            # filtro caratteri strani prima di inviare il messaggio
                             message = message.replace(', ,', '')
                             append_message_to_chat(role="user", content=f"[{message}]")
                         else:
-                            message = f"Found {len(products)} products in category '{slugs}'. Update the JSON field 'result' with information requested by the user. Update the JSON field 'products' with the most relevant items in the product list: {', '.join(p['product_name'] for p in products if 'product_name' in p)}. Update the JSON 'category' field with the most useful and specific element in the list: {', '.join(slugs)}."
+                            message = f"Found {len(products)} products in category '{slugs}'. Update the JSON field 'result' with information requested by the user. Update the JSON field 'products' with the most relevant items in the product list: [{', '.join(p['product_name'] for p in products if 'product_name' in p)}]. Update the JSON 'category' field with the most useful and specific element in the list: [{', '.join(slugs)}]. "
                             for p in products:
                                 detail = fetch_product_detail(p["code"])
                                 if not detail:
@@ -407,13 +435,12 @@ def play_match(config, initial_state, execution_id, is_human_turn):
 
                                     if product_name and brand:
                                         message += (
-                                            f"Found 'product details' for '{product_name}': "
-                                            f"brand '{brand}' with code '{p['code']}'. "
-                                            f"Ingredients: {detail.get('ingredients', 'N/A')}, "
-                                            f"Allergens: {detail.get('allergens', 'N/A')}. "
-                                            f"Suggest to the user the most relevant product's details (brand, ingredients, allergens)."
+                                            f"\nFound 'product details' for '{product_name}' with code '{p['code']}': "
+                                            f"- Brand '{brand}', "
+                                            f"- Ingredients: {detail.get('ingredients', 'N/A')}, "
+                                            f"- Allergens: {detail.get('allergens', 'N/A')}. "
                                             )
-                            
+                            message += (f"Suggest to the user the most relevant product's details (brand, ingredients, allergens).")
                             # filtro caratteri strani prima di inviare il messaggio TODO definire una funzione
                             message = message.replace(', ,', '')
                             append_message_to_chat(role="user", content=f"[{message}]")
@@ -429,15 +456,16 @@ def play_match(config, initial_state, execution_id, is_human_turn):
 
             while computer_response is None and retry_count < max_retries:
                 retry_count += 1
-                temperature = random.uniform(0.84, 0.96)  # Imposta una temperatura casuale tra 0.84 e 0.96
-                # print(f"[DEBUG] temperature {temperature:.2f}")
+                temperature = get_temperature_for_state(last_request_type)
+                current_temperature = temperature
+                print(f"[DEBUG] temperature {temperature:.2f}")
                 prompt_text = f"""
                                response to the user request using a json format like that:
                                 {{
                                     "request:":"<user request>",
                                     "request_type":"{last_request_type}",
-                                    "brands":{brand_history},
-                                    "products":{products_history},
+                                    "brands":{list(brand_history)},
+                                    "products":{list(products_history)},
                                     "category":"{query}",
                                     "result":"<build result requested by user, using the products found in the product list>",
                                     "suggestion":"<next step suggestion to the user, like 'how can I help you?'>",
@@ -484,14 +512,19 @@ def play_match(config, initial_state, execution_id, is_human_turn):
 
                     print(f"\033[34mResponse from ChatGpt:\n{product_list_str}\n{result}\n{suggestion}\033[0m")
 
-                    if retry_count > max_retries:
-                        append_message_to_chat(role="user", content=f"[CONGRATULATIONS! Assistant proposed a great suggestion.]")
-            
+            if retry_count > max_retries:
+                # TODO invia un messaggio per informare l'utente che non si riesce a completare la richiesta
+                print(f"[DEBUG] Max retries {max_retries} exceeded.")
+                append_message_to_chat(role="user", content=f"[The assistant cannot complete the user requestm, please set the 'completed' param to 'True'.]")
+            else:
+                append_message_to_chat(role="user", content=f"[CONGRATULATIONS! Assistant proposed a great suggestion.]")
+       
             if computer_response is not None:
                 is_human_turn = True
                 computer_result = {json.loads(computer_response).get('result', '{}')}
                 computer_completed = {json.loads(computer_response).get('completed', '{}')}
             else:
+                # TODO CALL FOR SUMMARIZE MESSAGE
                 gear_up = get_model_gear(CURRENT_MODEL)+1
                 CURRENT_MODEL = model_map.get(gear_up, DEFAULT_MODEL)
                 print(f"[DEBUG] Engine cannot retrieve a correct response from ChatGPT, trying to increase model gear to: {CURRENT_MODEL}")
@@ -505,8 +538,8 @@ def main():
     if len(params) >= 1 and ('-config' in [param.lower() for param in params]):
         config = load_config(params[1])
     else: 
-        config = load_config() #"/mnt/d/DEV/Prj/TEMP/PromptChess/config.json"
-    
+        config = load_config("/mnt/d/DEV/Prj/TEMP/PromptChess/config.json")
+    print(f"[DEBUG] Configuration loaded: {config}")
     # TODO imposta un parametro per la cartella di output
     output_folder =  os.getcwd() + config.get("folders", {}).get(OUT_FOLDER_PARAMETER, "/out/")
     execution_id = str( uuid.uuid4())

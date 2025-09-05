@@ -187,6 +187,7 @@ class ChatSession:
 
         print(f"[DEBUG] Model: {model} - Token disponibili per la risposta: {max_tokens}")
        
+        # impedisce di eseguire una richiesta che sarebbe respinta dall'API per superamento del limite token complessivo
         if max_tokens <= 0:
             raise RuntimeError("Max tokens exceeded.")
 
@@ -331,6 +332,69 @@ def get_last_user_message():
     if last:
         return jsonify({"last": last}), 200
     return jsonify({"error": "Nessun messaggio da user"}), 400
+
+@app.route("/chat/summarize", methods=["POST"])
+def summarize_messages():
+    print("[DEBUG] Eseguo sintesi della cronologia ...")
+
+    data = request.get_json() or {}
+    model = data.get("model", "gpt-4.1-nano")
+    temperature = float(data.get("temperature", 0.5))
+   # Prompt minimal per richiedere la sintesi del contesto
+    prompt = data.get("prompt", (
+        "Fornisci una sintesi strutturata e concisa delle richieste dell'utente emerse nella conversazione finora. "
+        "Evidenzia le intenzioni principali e riassumi i contenuti in forma sintetica e professionale."
+    )).strip()
+
+    messages = chat_session.messages
+
+    # Estrai tutti i messaggi user
+    user_messages = [m for m in messages if m.get("role") == "user"]
+
+    if len(user_messages) < 2:
+        return jsonify({"error": "Sono necessari almeno 2 messaggi utente per eseguire la sintesi."}), 400
+
+    # Separa l'ultimo messaggio utente
+    last_user_message = user_messages[-1]
+    user_messages_to_summarize = user_messages[:-1]
+
+    # Costruisci nuova cronologia ridotta (senza i messaggi user da sintetizzare)
+    preserved_messages = [
+        m for m in messages if m.get("role") != "user" or m == last_user_message
+    ]
+
+    # Temporaneamente imposta la nuova cronologia per la richiesta di sintesi
+    chat_session.messages = [
+        m for m in messages if m not in user_messages_to_summarize
+    ]
+
+    try:
+        # Richiedi sintesi all'LLM
+        summary = chat_session.chat(prompt, model=model, temperature=temperature)
+
+        # Ricostruisci la chat session:
+        # 1. Rimuove tutti i messaggi user tranne l’ultimo
+        # 2. Inserisce la sintesi come messaggio system
+        # 3. Reinserisce l’ultimo messaggio utente
+
+        chat_session.clear_messages()
+        chat_session.messages = [
+            m for m in preserved_messages if m != last_user_message
+        ]
+
+        chat_session.put_message("system", f"Richiesta originale del cliente:\n{summary}")
+        chat_session.put_message("user", last_user_message["content"])
+
+        return jsonify({
+            "status": "ok",
+            "summary": summary,
+            "preserved_user": last_user_message["content"],
+            "history_size": len(chat_session.messages)
+        }), 200
+
+    except Exception as e:
+        print(f"[ERROR] Sintesi fallita: {e}")
+        return jsonify({"error": "Errore durante la sintesi."}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
