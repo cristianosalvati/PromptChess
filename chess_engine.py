@@ -544,6 +544,7 @@ def main():
         is_human_turn=is_human_turn
     )
 
+    # Aggiorno la chat del proxy con il risultato finale della partita
     send_message_to_proxy_service(role="user", content=f"[{match_outcome}]")
     print(f"[DEBUG] Match status: {match_outcome}")
 
