@@ -18,10 +18,11 @@ resources/
 
 # Compiled Python bytecode
 *.py[cod]
+__pycache__/
+*$py.class
 
 # Log files
 *.log
-*.txt
 
 # diff files
 *.diff
@@ -35,6 +36,7 @@ dist/
 
 # JetBrains IDE
 .idea/
+.vscode/
 
 # Unit test reports
 .xml
@@ -57,4 +59,20 @@ Thumbs.db
 *.flv
 *.mov
 *.wmv
+
+# Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Output folders
+output/
+resources/logs/
+resources/responses/
 

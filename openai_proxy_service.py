@@ -17,11 +17,12 @@ else:
     load_dotenv()
 
 # Instanzia il client OpenAI
-# api_key = "sk-proj-...."
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
-    raise RuntimeError("OPENAI_API_KEY not found. Check the .env file or environment variables.")
-client = OpenAI(api_key=api_key)
+    print("WARNING: OPENAI_API_KEY not found. Set the OPENAI_API_KEY environment variable to enable AI features.")
+    client = None
+else:
+    client = OpenAI(api_key=api_key)
 
 # Configura il logger
 logging.basicConfig(level=logging.WARN)
@@ -172,6 +173,9 @@ class ChatSession:
     def chat(self, prompt: str, model: str = "gpt-4.1-nano",
              temperature: float = 0.5, margin: int = 100) -> str:
         
+        if self.client is None:
+            raise RuntimeError("OPENAI_API_KEY not configured. Set the environment variable to enable AI features.")
+        
         if self.system_message_count == 0:
             raise RuntimeError("Nessun messaggio di sistema iniziale. Usa /chat/init per aggiungerne uno.")
 
@@ -227,6 +231,21 @@ atexit.register(dump_history_on_exit)
 chat_session = ChatSession(client)
 app = Flask(__name__, template_folder='webapp/templates', static_folder='webapp/static')
 CORS(app, resources={r"/*": {"origins": "*"}})
+
+@app.route("/")
+def home():
+    api_status = "configured" if client is not None else "not configured (set OPENAI_API_KEY)"
+    return jsonify({
+        "service": "PromptChess OpenAI Proxy",
+        "status": "running",
+        "api_key_status": api_status,
+        "endpoints": {
+            "/chat": "POST - Send chat messages",
+            "/chat/init": "POST - Initialize chat session",
+            "/chat/history": "GET - Get chat history",
+            "/chat/append": "POST - Append message to chat"
+        }
+    })
 
 @app.route("/chat", methods=["POST"])
 def chat():
