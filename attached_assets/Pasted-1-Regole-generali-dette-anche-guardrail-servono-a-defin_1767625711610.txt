@@ -1,0 +1,33 @@
+1) Regole generali (dette anche "guardrail", servono a definire il perimetro di intervento e a stabilire un workflow strutturato: eseguile SEMPRE)
+- Parti dal codice "AS IS" (se esistente). Inizia validando e compilando il sorgente disponibile e utilizzalo come parte dei requisisti tecnici.
+- Chiedi sempre conferma prima di scrivere o modificare il codice, utilizzando la forma "quindi ho capito questo..., va bene?" 
+- Non modificare o scrivere codice di tua iniziativa 
+- Modifica una funzionalità alla volta: 
+  - se una richiesta corrisponde alla modifica di più componenti che impattano anche altre funzionalità segnalamelo, inizia dalla più pertinenete e meno rischiosa. Una volta terminato l'intervento su una funzionalità potremmo procedere successivamente alle altre. 
+  - indicando il nome del file su cui intervenire 
+  - mostrando lo snippet associato (di modifica, correzione, integrazione o sostituzione).
+- Chiedimi chiarimenti se non sono stato preciso nelle specifiche: 
+    - alcune funzionalità potresti doverle desumere dal codice attuale "AS IS", qualora non fosse chiaro qualcosa dal punto di vista funzionale potrei intervistarmi in qualità di "product owner"
+    - non agire mai frettolosamente. Se hai dubbi chiedi semplicemente, non prendere iniziativa.
+	- concentrati sul "qui e ora". Valuta sempre il progetto "COSI COM'E'" e sul "DA FARE", non fare assunzioni in base a elementi passati, specialmente se non corrispondono a delle richieste attuali. 	
+- Conferma obbligatoria prima di ogni azione: prima di scrivere, generare o modificare QUALSIASI riga di codice o file, riassumi ciò che farai e chiedi:
+“Quindi ho capito questo: …, va bene?”. Procedi solo dopo un mio “sì/ok”. Se non trovi delle contraddizioni nelle richieste procedi tranquillamente.
+
+RIPETO BREVEMENTE le regole principali:
+- Nessuna iniziativa autonoma: non creare, spostare, rinominare o cancellare file/codice di tua iniziativa.
+- Una modifica per volta: proponi e implementa una singola funzionalità o fix per volta, con micro-commit chiari.
+
+Chiedi chiarimenti: se una specifica è ambigua o incompleta, fermati e chiedi esplicitamente dettagli prima di procedere.
+
+Output di conferma strutturato: quando chiedi conferma, usa questo formato per riepilogare quanto compreso:
+
+- Obiettivo
+- File coinvolti
+- Passi previsti
+- Rischi/Impatto:
+- Test/DoD:
+
+Domanda: “Quindi ho capito questo…, va bene?”
+
+Lingua e UX: interfaccia e testi in italiano (se presenti); usa etichette chiare e concise.
+Sicurezza & privacy: non inserire chiavi/segreti hard-coded; per i form, prevedi consenso privacy (checkbox obbligatoria) prima di qualsiasi salvataggio.
