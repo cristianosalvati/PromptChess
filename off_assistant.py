@@ -6,6 +6,7 @@ import requests
 import uuid
 import random
 import time
+import unicodedata
 from collections import deque
 from datetime import datetime, timedelta
 from modules.version import VERSION
@@ -38,10 +39,12 @@ STATE_TEMPERATURES = {
    # "confirm": (0.2, 0.4),   # es. prima di completare
 }
 
+#Determina e modula la temperatura in base allo stato
 def get_temperature_for_state(state):
     min_temp, max_temp = STATE_TEMPERATURES.get(state, (0.40, 0.50))
     return round(random.uniform(min_temp, max_temp), 2)
 
+# Data il nome del modello, ritorna il suo indice nella mappa, serve a cambiare modello in caso di errori
 def get_model_gear(name: str) -> int:
     """
     Ritorna l'indice del modello dato il suo nome,
@@ -53,7 +56,23 @@ def get_model_gear(name: str) -> int:
         if model == name:
             return idx
     return 0
+#
+def normalize(text):
+    return unicodedata.normalize("NFKC", text.strip().casefold())
+    
+def is_in_list_normalized(target, string_list):
+    """
+    Verifica se 'target' è contenuto nella lista 'string_list' usando confronti normalizzati.
+    
+    Args:
+        target (str): stringa da cercare
+        string_list (List[str]): lista di stringhe in cui cercare
 
+    Returns:
+        bool: True se presente, False altrimenti
+    """
+    target_norm = normalize(target or "")
+    return any(normalize(item or "") == target_norm for item in string_list)
 # 
 def validate_params():
     """
@@ -76,6 +95,7 @@ def validate_params():
 
     return params
 
+# TODO necessario utilizzare questo metodo per caricare il file di configurazione
 def load_config(filename = DEFAULT_CONFIG_FILE):
     """
     Carica la configurazione dal file JSON specificato.
@@ -97,6 +117,7 @@ def load_config(filename = DEFAULT_CONFIG_FILE):
 
     return config
 
+# Controlla se il tempo limite per la chat è stato superato
 def time_exceeded(start_time: datetime, time_limit) -> bool:
     """
     Restituisce True se il tempo corrente ha superato 'start_time' di più di 'time_limit'.
@@ -172,6 +193,20 @@ def get_last_user_message():
         print(f"❌ Error {resp.status_code}:", resp.text)
         return None
 
+def summarize_messages():
+    """
+    Rimuove l’ultimo messaggio (sia user che assistant): 
+    se vuoi solo assistant, potresti poi controllare il role di ritorno.
+    """
+    resp = requests.post(f"http://localhost:5000/chat/summarize")
+    if resp.ok:
+        status = resp.json()["status"]
+        print("[DEBUG] ✅ summarize status:", status)
+        return status
+    else:
+        print(f"❌ Error {resp.status_code}:", resp.text)
+        return None
+
 def remove_last_assistant_message():
     """
     Rimuove l’ultimo messaggio (sia user che assistant): 
@@ -229,6 +264,7 @@ def send_message_to_chat(prompt_text, model: str = DEFAULT_MODEL,
         print(f"[DEBUG] ChatGPT error response: {response_data}")
         return None
    
+# Carica le categorie dal catalogo OpenFoodFacts: TODO potrebbe essere spostato in un file di utilità
 def sanitize_json_string(json_string):
     """
     Tenta di riparare una stringa JSON che contiene virgolette non escapate.
@@ -242,6 +278,7 @@ def sanitize_json_string(json_string):
 
     return json_string
 
+# Main chat loop
 def play_match(config, initial_state, execution_id, is_human_turn):
 
     print(f"Game start! - Version n. {VERSION}")
@@ -269,6 +306,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
         "request_type": "",
         "brands": [],
         "products": [],
+        "selected_product": "",
         "category": "",
         "result": "",
         "suggestion": "",
@@ -312,6 +350,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
         Se non riesci a classificare la richiesta, usa "other".
     - "brands": elenco dei brand relativi ai prodotti trovati (se disponibili).
     - "products": elenco con nomi dei prodotti in {chatbot_language}.
+    - "selected_product": nome del prodotto selezionato esplicitamente dall'utente. Se specificato allora la richiesta deve essre di tipo purchase, product_check o info.
     - "category": categoria prodotto in {chatbot_language} dedotta dalla richiesta utente (es.: "cake","soft-drinks","snacks"). Obbligatorio.
     - "result": esito sintetico della richiesta in {chatbot_language} (max 1-2 frasi). Obbligatorio.
     - "suggestion": prossimo passo utile in {chatbot_language} (es.: "Would you like me to filter by price?"). Obbligatorio.
@@ -321,6 +360,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
     rules = rules + "\n" + json.dumps(initial_state, indent=4, ensure_ascii=False)
     init_chatgpt_session(rules, target, output, language='italiano')
 
+    # Variabili di stato
     last_query = ""
     # products_history = []
     products_history = deque(maxlen=total_max_products)  # Mantiene solo gli ultimi 50 prodotti
@@ -328,6 +368,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
     brand_history = deque(maxlen=total_max_products)  # Mantiene solo gli ultimi 50 brand
     last_request_type = ""
     current_temperature = 0.5
+    selected_product = ""
 
     while not time_exceeded(START_TIME, TIME_LIMIT):
     
@@ -348,6 +389,9 @@ def play_match(config, initial_state, execution_id, is_human_turn):
             #print(f"[DEBUG] JSON Response from ChatGPT {response}")
             payload = json.loads(response)          # -> dict Python
             query = payload.get('category', '').replace('-', ' ').strip()
+            selected_product = (payload.get('selected_product') or '').strip().casefold()
+
+            # TODO: se la categoria non è presente verificare se è possibile recuperare il codice prodotto per cercare direttamente un dettaglio
             
             # Gestione della query e momorizzazione dell'ultima query valida, riumovere categorie con meno di 3 caratteri
             if query and query != last_query:
@@ -355,18 +399,22 @@ def play_match(config, initial_state, execution_id, is_human_turn):
             elif not query and last_query:
                 query = last_query
 
+            # TODO verificare come evitare di ricaricare la lista prodotti durante la ricerca dei dettagli
+            # quando la richiesta è di tipo "info" non serve cercare prodotti ma il chatbot deve rispondere con le informazioni contenute nella chat
             if last_request_type != "info":
                 slugs = search_category(query)
                 last_request_type = payload.get('request_type', '').strip()
                 completed = payload.get('completed', '')
 
-                if completed == True:
-                    # print(f"[DEBUG] Request marked as completed by assistant.")
-                    append_message_to_chat(role="user", content=f"[The request is marked as completed. Assistant should suggest a new request or action to the user.]")
+                if completed == True and selected_product:
+                    append_message_to_chat(role="user", content=f"[The request is marked as completed. Assistant should confirm the completion and suggest a new request or action to the user.]")
                     is_human_turn = False
-                    brand_history = []
-                    products_history = []
+                    # TODO non sono sicuro che sia corretto azzerare la storia
+                    # brand_history = []
+                    # products_history = []
                     continue
+                else: 
+                    completed = False
 
                 if slugs is None:
                     print(f"[DEBUG] Nessuna categoria trovata (query: {query}).")
@@ -393,16 +441,30 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                                 seen.add(code)
                                 products.append(p)
 
-                    # Ordina alfabeticamente
-                    # TODO si potrebbe ordinare per rilevanza, ma come? per ora alfabeticamente
-                    products.sort(key=lambda x: (x.get("product_name") or "").lower())
+                    # Ordinamento risultati
+                    # si potrebbe ordinare per rilevanza, selected_product
+                    # il parametro "selected_products" è utilizzato per indicare quali tra i prodotti rilevanti è stato selezionato
+                    # il prodotto selezionato deve andare in prima posizione nella lista
+                    selected_normalized = normalize(selected_product or "")
+
+                    def norm_name(p):
+                        return normalize(p.get("product_name") or "")
+
+                    products.sort(
+                        key=lambda p: (
+                            0 if selected_normalized and norm_name(p) == selected_normalized else 1,
+                            norm_name(p)
+                        )
+                    )
 
                     if last_request_type not in ("search", "other") and products:
-                        products = products[:most_relevant_items_num - retry_count]  # Limita a most_relevant_items_num prodotti, riducendone ad ogni retry (cercando di stringere il campo 'result')
 
-                    # brand_history.update(p.get("brands", "") for p in products if p.get("brands"))
-                    # products_history.update(p.get("product_name", "") for p in products if p.get("product_name"))
-
+                        # se c'è un prodotto selezionato provo a ridurre la rosa dei prodotti in base al numero dei retry
+                        if selected_product and most_relevant_items_num - retry_count > 1:
+                            products = products[:most_relevant_items_num - retry_count] 
+                        else:
+                            products = products[:most_relevant_items_num]
+                    
                     # limita la storia ad un certo numero di elementi, i primi arrivati vanno rimossi
                     for name in (p.get("product_name", "") for p in products if p.get("product_name")):
                         if name not in products_history:
@@ -412,11 +474,13 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                         if brand not in brand_history:
                             brand_history.append(brand)
 
+                    # non ci sono prodotti
                     if not products:
                         message = f"No products found for the category: '{slugs}'. Please try again with a different category."
                         append_message_to_chat(role="user", content=f"[{message}]")
                         # print(f"[DEBUG] No products found for category slugs: {slugs}")
                     else:
+                        # ci sono ma sono troppi
                         # print(f"[DEBUG] Found products: {products}")
                         if len(products) > most_relevant_items_num:
                             message = f"Too many products: found {len(products)} for the selected categories, please reduce the number of products updating the JSON field 'products' with the most relevant {most_relevant_items_num - retry_count} items in the products set: {list(products_history)}. Update the JSON 'category' field with the most useful and specific element in the set, related to the selected products: [{', '.join(slugs)}]. Get a related 'result' for the original user request with a concise summary (1-2 sentences). Suggest to the user next steps in the 'suggestion' field to refine the request or get more details about the products found."
@@ -424,6 +488,13 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                             message = message.replace(', ,', '')
                             append_message_to_chat(role="user", content=f"[{message}]")
                         else:
+                            # se il numero dei risultati è accettabile allora procedo a recuperare i dettagli
+                            # TODO: verificare se selected_product è in products prima di procedere
+                            product_names = [p.get("product_name", "") for p in products]
+                            if selected_product and not is_in_list_normalized(selected_product, product_names):
+                                message = f"The selected product '{selected_product}' is not in the product list found for the category '{slugs}'. Please try again with a different product or check the spelling. Update the JSON field 'products' with the most relevant items in the product list: [{', '.join(p['product_name'] for p in products if 'product_name' in p)}]. Update the JSON 'category' field with the most useful and specific element in the list: [{', '.join(slugs)}]. "
+                                print(f"[DEBUG] {message}")
+
                             message = f"Found {len(products)} products in category '{slugs}'. Update the JSON field 'result' with information requested by the user. Update the JSON field 'products' with the most relevant items in the product list: [{', '.join(p['product_name'] for p in products if 'product_name' in p)}]. Update the JSON 'category' field with the most useful and specific element in the list: [{', '.join(slugs)}]. "
                             for p in products:
                                 detail = fetch_product_detail(p["code"])
@@ -459,6 +530,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                 temperature = get_temperature_for_state(last_request_type)
                 current_temperature = temperature
                 print(f"[DEBUG] temperature {temperature:.2f}")
+                # Propone all'LLM una formulazione della risposta
                 prompt_text = f"""
                                response to the user request using a json format like that:
                                 {{
@@ -466,6 +538,7 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                                     "request_type":"{last_request_type}",
                                     "brands":{list(brand_history)},
                                     "products":{list(products_history)},
+                                    "selected_product":"{selected_product}",
                                     "category":"{query}",
                                     "result":"<build result requested by user, using the products found in the product list>",
                                     "suggestion":"<next step suggestion to the user, like 'how can I help you?'>",
@@ -510,10 +583,11 @@ def play_match(config, initial_state, execution_id, is_human_turn):
 
                     product_list_str = "\n".join(f"- {p}" for p in products)
 
+                    # Mostra in output la risposta del chatbot
                     print(f"\033[34mResponse from ChatGpt:\n{product_list_str}\n{result}\n{suggestion}\033[0m")
 
             if retry_count > max_retries:
-                # TODO invia un messaggio per informare l'utente che non si riesce a completare la richiesta
+                # informa l'utente che non si riesce a completare la richiesta
                 print(f"[DEBUG] Max retries {max_retries} exceeded.")
                 append_message_to_chat(role="user", content=f"[The assistant cannot complete the user requestm, please set the 'completed' param to 'True'.]")
             else:
@@ -524,7 +598,11 @@ def play_match(config, initial_state, execution_id, is_human_turn):
                 computer_result = {json.loads(computer_response).get('result', '{}')}
                 computer_completed = {json.loads(computer_response).get('completed', '{}')}
             else:
-                # TODO CALL FOR SUMMARIZE MESSAGE
+                # Se non si riesce ad ottenere una risposta forse il proxy opeaai ha terminato i token disponibili
+                # CALL FOR SUMMARIZE MESSAGE
+                summarize_messages()
+
+                # Gear up del modello
                 gear_up = get_model_gear(CURRENT_MODEL)+1
                 CURRENT_MODEL = model_map.get(gear_up, DEFAULT_MODEL)
                 print(f"[DEBUG] Engine cannot retrieve a correct response from ChatGPT, trying to increase model gear to: {CURRENT_MODEL}")

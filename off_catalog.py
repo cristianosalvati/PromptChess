@@ -96,8 +96,8 @@ def fetch_product_detail(code):
         "code": data.get("code"),
         "name": data.get("product_name"),
         "brands": data.get("brands"),
-        "ingredients": ingredients or ["N/D"],
-        "allergens": allergens or ["nessuno segnalato"]
+        "ingredients": ingredients or ["None"],
+        "allergens": allergens or ["None"]
     }
 
 def main():
@@ -118,8 +118,8 @@ def main():
         print(f"— Codice   : {detail['code']}")
         print(f"  Nome     : {detail['name']}")
         print(f"  Marca    : {detail['brands']}")
-        print(f"  Ingredienti: {', '.join(detail['ingredients']) or 'N/D'}")
-        print(f"  Allergeni  : {', '.join(detail['allergens']) or 'Nessuno segnalato'}")
+        print(f"  Ingredienti: {', '.join(detail['ingredients']) or 'None'}")
+        print(f"  Allergeni  : {', '.join(detail['allergens']) or 'None'}")
         print()
 
 if __name__ == "__main__":
