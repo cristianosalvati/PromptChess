@@ -124,7 +124,13 @@ class ChatSession:
             if self.messages[idx]["role"] == "assistant":
                 return self.messages.pop(idx)
         return None
-    
+
+    def clear_messages(self):
+        """
+        Rimuove tutti i messaggi dalla sessione.
+        """
+        self.messages.clear()
+        self.system_message_count = 0
     
     def get_last_assistant(self):
         """
@@ -164,7 +170,7 @@ class ChatSession:
         else:
             if force:
                 # Se forzato, rimuove tutti i messaggi precedenti
-                self.messages.clear()
+                self.clear_messages()
                 # Aggiunge il nuovo system come primo messaggio
                 self.messages.append({"role": "system", "content": content})
                 return True
