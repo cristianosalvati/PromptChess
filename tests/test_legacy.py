@@ -68,7 +68,7 @@ class TestLegacyDetectMove:
     
     def test_move_legality(self, legacy_prev_state):
         board = json_to_board(legacy_prev_state)
-        legal = is_legal_move('P', 'b2', 'b3', board)
+        legal = is_legal_move('P', 'b2', 'b3', board, 'white')
         assert legal == True
     
     def test_find_checkers_in_scenario(self, legacy_prev_state):

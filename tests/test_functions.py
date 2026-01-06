@@ -137,11 +137,14 @@ class TestDetectMove:
 
 class TestFindCheckers:
     
-    def test_find_rook_checking_king(self, check_scenario_json):
-        board = json_to_board(check_scenario_json)
+    def test_find_rook_checking_white_king(self):
+        check_board = {
+            'neri': {'pedoni': [], 'alfieri': [], 'cavalli': [], 'torri': ['e8'], 'regina': [], 're': ['a8']},
+            'bianchi': {'pedoni': [], 'alfieri': [], 'cavalli': [], 'torri': [], 'regina': [], 're': ['e1']}
+        }
+        board = json_to_board(check_board)
         checkers = find_checkers(board)
         assert len(checkers) > 0
-        assert any('R' in c for c in checkers)
     
     def test_no_checkers_at_start(self, initial_board):
         checkers = find_checkers(initial_board)

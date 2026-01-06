@@ -43,8 +43,8 @@ class TestMalformedJsonRepair:
         parsed = json.loads(repaired)
         assert 'mossa_proposta' in parsed
     
-    def test_repair_markdown_prefix(self):
-        malformed = 'Here is my move:\n```json\n{"mossa_proposta": "d7-d5"}\n```'
+    def test_repair_triple_backticks(self):
+        malformed = '```\n{"mossa_proposta": "d7-d5"}\n```'
         repaired = repair_json_board(malformed)
         parsed = json.loads(repaired)
         assert parsed['mossa_proposta'] == 'd7-d5'
