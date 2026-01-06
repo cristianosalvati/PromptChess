@@ -7,7 +7,7 @@ import random
 import time
 from datetime import datetime, timedelta
 from modules.version import VERSION
-from modules.chess_core import json_to_board, board_to_json, is_legal_move, apply_move, boards_equal, detect_move, find_checkers, is_game_active, game_result
+from modules.chess_core import json_to_board, board_to_json, is_legal_move, apply_move, boards_equal, detect_move, find_checkers, is_game_active, game_result, show_board, repair_json_board, warn_if_in_check
 from utils.app_utils import load_config 
 from utils.file_utils import save_content_in_file
 from utils.constants import OUT_FOLDER_PARAMETER, DEFAULT_CONFIG_FILE
@@ -100,41 +100,6 @@ def time_exceeded(start_time: datetime, time_limit) -> bool:
         raise ValueError("time_limit must be integer or timedelta.")
 
     return datetime.now() - start_time > limit_delta
-
-def show_board(board):
-    """
-    Stampa la board con sfondo alternato e pezzi bianchi/neri colorati distintamente:
-    - Pezzi bianchi (maiuscoli) in bright white (97)
-    - Pezzi neri (minuscoli) in bright black (90)
-    """
-    files = 'abcdefgh'
-    light_bg = '47'   # bianco
-    dark_bg  = '100'  # grigio scuro
-    reset    = '\033[0m'
-    fg_white = '97'   # bright white
-    fg_black = '30'   # bright black
-    fg_empty = '39'   # default
-
-    print("\n")
-    for rank in range(8, 0, -1):
-        row = f"{rank} "
-        for i, file in enumerate(files):
-            piece = board.at[file, rank] or ' '
-            bg = light_bg if (i + rank) % 2 == 0 else dark_bg
-
-            if piece.isupper():      # pezzo bianco
-                fg = fg_white
-            elif piece.islower():    # pezzo nero
-                fg = fg_black
-            else:                    # vuoto
-                fg = fg_empty
-
-            cell = f"\033[{fg};{bg}m {piece} {reset}"
-            row += cell
-        print(row)
-    footer = "   " + "".join(f" {f} " for f in files)
-    print(footer)
-    print("\n")
 
 # Inizializza una sessione di ChatGPT con regole specifiche per il gioco degli scacchi
 # Questa funzione prepara le regole e gli obiettivi per il modello, in modo che possa rispondere in modo pertinente alle mosse degli avversari.
@@ -275,58 +240,6 @@ def send_chess_move_to_chatgpt(board_state, proposed_action, model: str = DEFAUL
         # print(f"[DEBUG] ChatGPT error response: {response_data}")
         return None
                            
-def repair_json_board(json_board):
-    
-    raw = json_board.strip()
-
-    # 1) Rimuovi eventuali code fences
-    if raw.startswith("```"):
-        # rimuove tutti i backtick e la parola json
-        raw = raw.strip("`").replace("json", "", 1).strip()
-
-    # 2) Controlla quante graffe mancano e aggiungile
-    open_braces  = raw.count("{")
-    close_braces = raw.count("}")
-    if open_braces > close_braces:
-        raw += "}" * (open_braces - close_braces)
-
-    # 3) Tenta il parsing
-    try:
-        data = json.loads(raw)
-    except Exception as e:
-        print("Malformed JSON:", e)
-        # qui puoi loggare `raw` per debug
-        raise
-
-    return json.dumps(data, indent=4, ensure_ascii=False)
-
-def warn_if_in_check(board, color, detect_ai_move = None):
-    """
-    Controlla se il re bianco è sotto scacco: se sì stampa un avviso con i pezzi che lo attaccano.
-    """
-    warn_message = None
-
-    checkers = []  # Lista dei pezzi che attaccano il re del colore specificato
-
-    try:
-        checkers = find_checkers(board, color) # Trova i pezzi che attaccano il re del colore specificato
-        if len(checkers) > 0 and detect_ai_move is not None: 
-            piece, from_sq, to_sq = detect_ai_move[0], detect_ai_move[1], detect_ai_move[2]
-            if is_legal_move(piece, from_sq, to_sq, board, color):
-                check_board = apply_move(piece, from_sq, to_sq, board)
-                checkers_l2 = find_checkers(check_board, color)
-                if not checkers_l2:
-                    checkers = []  # Se la mossa proposta non lascia il re in scacco, resetta i checkers
-    except ValueError as e:
-        print(f"Error: {e}")
-        warn_message = f"Error: {e}"
-
-    if checkers:
-        attackers = ", ".join(f"{c['piece']} da {c['from']}" for c in checkers)
-        warn_message = (f"{color.capitalize()} king is under attack: {attackers}")
-
-    return warn_message
-
 def play_match(config, json_board, execution_id, is_human_turn):
 
     print(f"Game start! - Version n. {VERSION}")
