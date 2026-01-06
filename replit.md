@@ -29,7 +29,23 @@ PromptChess is a Python Flask application that demonstrates integrating natural 
 2. Set the `OPENAI_API_KEY` environment variable
 3. Use the workflow to start the server
 
+## Testing
+- **Test Framework**: pytest with pytest-html for reports
+- **Test Location**: `tests/` directory
+- **Run Tests**: `./run_tests.sh [opzione]`
+  - `all` - Tutti i test + report HTML
+  - `summary` - Riepilogo rapido
+  - `components` - Sezione 3 (Componenti)
+  - `functions` - Sezione 2 (Funzionalità)
+  - `flow` - Sezione 5 (Flusso Operativo)
+  - `hallucinations` - Sezione 6 (Gestione Hallucinations)
+  - `legacy` - Test migrati da chess_test.py
+
 ## Recent Changes
+- 2026-01-06: Creata suite di test completa
+  - 66 unit test organizzati per categoria
+  - Script run_tests.sh per esecuzione
+  - Migrato modules/chess_test.py a tests/test_legacy.py
 - 2026-01-05: Initial Replit setup
   - Added Python 3.11 with required dependencies
   - Created requirements.txt
