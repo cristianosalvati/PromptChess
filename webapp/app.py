@@ -1,5 +1,7 @@
 import os
 import sys
+import json as json_module
+import copy
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_cors import CORS
@@ -7,6 +9,7 @@ from flask_cors import CORS
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from webapp.services import LoginService, SessionManager
+from modules.chess_core import json_to_board, is_legal_move, detect_move, apply_move, board_to_json
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'promptchess-dev-key-change-in-prod')
@@ -198,6 +201,8 @@ def health():
 @app.route('/api/game/<session_id>/move', methods=['POST'])
 @login_required
 def api_make_move(session_id):
+    MAX_RETRIES = 3
+    
     sm = get_session_manager()
     game_session = sm.get_session(session_id)
     
@@ -212,18 +217,20 @@ def api_make_move(session_id):
     
     data = request.get_json() or {}
     piece = data.get('piece', 'P')
-    from_sq = data.get('from_sq', '')
-    to_sq = data.get('to_sq', '')
+    from_sq = data.get('from_sq', '').lower()
+    to_sq = data.get('to_sq', '').lower()
     
     if not from_sq or not to_sq:
         return jsonify({'success': False, 'error': 'Missing move coordinates'}), 400
     
-    import json as json_module
     game_session.record_move({
         'piece': piece,
         'from': from_sq,
         'to': to_sq
     }, apply_to_board=True)
+    
+    board_after_white = copy.deepcopy(game_session.board_state)
+    board_df = json_to_board(board_after_white)
     
     prompt = f'''
 Mossa dei Bianchi: {piece} {from_sq}-{to_sq}
@@ -234,30 +241,72 @@ Proponi la tua mossa per i Neri e aggiorna lo stato della scacchiera.
 Rispondi in JSON con: neri, bianchi, mossa_proposta, commento_giocatore, messaggio_avversario.
 '''
     
-    try:
-        ai_response = game_session.send_to_llm(prompt, model='gpt-4.1-nano', temperature=0.7)
-        
+    ai_move = ''
+    ai_comment = ''
+    ai_message = ''
+    last_error = ''
+    
+    for attempt in range(MAX_RETRIES):
         try:
-            parsed = json_module.loads(ai_response)
+            ai_response = game_session.send_to_llm(prompt, model='gpt-4.1-nano', temperature=0.7)
+            
+            try:
+                parsed = json_module.loads(ai_response)
+            except json_module.JSONDecodeError:
+                last_error = 'AI returned invalid JSON'
+                game_session.pop_last_assistant()
+                prompt = f"La tua risposta non era JSON valido. Riprova con JSON puro: {json_module.dumps(board_after_white)}"
+                continue
+            
             ai_move = parsed.get('mossa_proposta', '')
             ai_comment = parsed.get('commento_giocatore', '')
             ai_message = parsed.get('messaggio_avversario', '')
             
-            if 'neri' in parsed and 'bianchi' in parsed:
-                game_session.board_state = {
-                    'neri': parsed['neri'],
-                    'bianchi': parsed['bianchi']
-                }
+            if not ai_move:
+                last_error = 'No move proposed'
+                game_session.pop_last_assistant()
+                prompt = f"Non hai proposto una mossa. Proponi una mossa valida per i Neri. Stato: {json_module.dumps(board_after_white)}"
+                continue
             
-            if ai_move:
-                parts = ai_move.replace('-', ' ').split()
-                if len(parts) >= 2:
-                    game_session.record_move({
-                        'piece': 'p',
-                        'from': parts[0],
-                        'to': parts[1] if len(parts) > 1 else parts[0],
-                        'ai_message': ai_message
-                    })
+            parts = ai_move.replace('-', ' ').split()
+            if len(parts) < 2:
+                last_error = f'Invalid move format: {ai_move}'
+                game_session.pop_last_assistant()
+                prompt = f"Formato mossa invalido '{ai_move}'. Usa formato 'e7-e5'. Stato: {json_module.dumps(board_after_white)}"
+                continue
+            
+            ai_from = parts[0].lower()
+            ai_to = parts[1].lower()
+            
+            try:
+                is_valid = is_legal_move(None, ai_from, ai_to, board_df, "black")
+            except Exception as e:
+                is_valid = False
+                last_error = str(e)
+            
+            if not is_valid:
+                last_error = f'Illegal move: {ai_move}'
+                game_session.pop_last_assistant()
+                prompt = f"Mossa illegale '{ai_move}'. La mossa non rispetta le regole degli scacchi. Proponi una mossa valida per i Neri. Stato: {json_module.dumps(board_after_white)}"
+                continue
+            
+            try:
+                new_board_df = apply_move(None, ai_from, ai_to, board_df)
+                validated_board = board_to_json(new_board_df)
+            except Exception as e:
+                last_error = f'Error applying move: {e}'
+                game_session.pop_last_assistant()
+                prompt = f"Errore nell'applicare la mossa. Riprova. Stato: {json_module.dumps(board_after_white)}"
+                continue
+            
+            game_session.board_state = validated_board
+            
+            game_session.record_move({
+                'piece': 'p',
+                'from': ai_from,
+                'to': ai_to,
+                'ai_message': ai_message
+            }, apply_to_board=False)
             
             sm.save_session(game_session)
             
@@ -271,18 +320,20 @@ Rispondi in JSON con: neri, bianchi, mossa_proposta, commento_giocatore, messagg
                 'move_history': game_session.move_history
             })
             
-        except json_module.JSONDecodeError:
-            return jsonify({
-                'success': False,
-                'error': 'AI returned invalid JSON',
-                'raw_response': ai_response[:500]
-            }), 500
-            
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        except Exception as e:
+            last_error = str(e)
+            continue
+    
+    game_session.board_state = board_after_white
+    sm.save_session(game_session)
+    
+    return jsonify({
+        'success': False,
+        'error': f'AI failed to provide valid move after {MAX_RETRIES} attempts: {last_error}',
+        'board_state': game_session.board_state,
+        'current_turn': game_session.current_turn,
+        'move_history': game_session.move_history
+    }), 500
 
 
 @app.route('/api/game/<session_id>/state')
