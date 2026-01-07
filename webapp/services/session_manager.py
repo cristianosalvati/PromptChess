@@ -95,13 +95,43 @@ class GameSession:
         
         return assistant_content
     
-    def record_move(self, move: dict):
+    def apply_move_to_board(self, piece: str, from_sq: str, to_sq: str):
+        piece_map = {
+            'P': 'pedoni', 'N': 'cavalli', 'B': 'alfieri', 
+            'R': 'torri', 'Q': 'regina', 'K': 're',
+            'p': 'pedoni', 'n': 'cavalli', 'b': 'alfieri',
+            'r': 'torri', 'q': 'regina', 'k': 're'
+        }
+        
+        is_white = piece.isupper()
+        side = 'bianchi' if is_white else 'neri'
+        piece_type = piece_map.get(piece.upper(), 'pedoni')
+        
+        if piece_type in self.board_state[side]:
+            pieces = self.board_state[side][piece_type]
+            if from_sq in pieces:
+                pieces.remove(from_sq)
+                pieces.append(to_sq)
+        
+        enemy_side = 'neri' if is_white else 'bianchi'
+        for pt in self.board_state[enemy_side]:
+            if to_sq in self.board_state[enemy_side][pt]:
+                self.board_state[enemy_side][pt].remove(to_sq)
+    
+    def record_move(self, move: dict, apply_to_board: bool = False):
+        piece = move.get('piece', 'P')
+        from_sq = move.get('from', '')
+        to_sq = move.get('to', '')
+        
+        if apply_to_board and from_sq and to_sq:
+            self.apply_move_to_board(piece, from_sq, to_sq)
+        
         self.move_history.append({
             'move_number': len(self.move_history) + 1,
             'player': self.current_turn,
-            'piece': move.get('piece'),
-            'from': move.get('from'),
-            'to': move.get('to'),
+            'piece': piece,
+            'from': from_sq,
+            'to': to_sq,
             'ai_message': move.get('ai_message', ''),
             'timestamp': datetime.utcnow().isoformat()
         })

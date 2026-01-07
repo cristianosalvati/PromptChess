@@ -223,11 +223,11 @@ def api_make_move(session_id):
         'piece': piece,
         'from': from_sq,
         'to': to_sq
-    })
+    }, apply_to_board=True)
     
     prompt = f'''
 Mossa dei Bianchi: {piece} {from_sq}-{to_sq}
-Stato scacchiera attuale:
+Stato scacchiera attuale (già aggiornato con la mossa dei Bianchi):
 {json_module.dumps(game_session.board_state, indent=2)}
 
 Proponi la tua mossa per i Neri e aggiorna lo stato della scacchiera.
