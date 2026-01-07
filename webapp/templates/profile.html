@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}Profile - PromptChess{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <div class="profile-card">
+        <h1>Player Profile</h1>
+        
+        <div class="profile-stats">
+            <div class="stat-box">
+                <span class="stat-value">{{ profile.elo_rating }}</span>
+                <span class="stat-label">ELO Rating</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value">{{ profile.games_played }}</span>
+                <span class="stat-label">Games Played</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value">{{ profile.games_won }}</span>
+                <span class="stat-label">Wins</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value">{{ profile.games_lost }}</span>
+                <span class="stat-label">Losses</span>
+            </div>
+        </div>
+        
+        <form action="{{ url_for('profile') }}" method="post" class="profile-form">
+            <h2>Edit Profile</h2>
+            
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" value="{{ profile.username }}" disabled>
+            </div>
+            
+            <div class="form-group">
+                <label for="display_name">Display Name</label>
+                <input type="text" id="display_name" name="display_name" value="{{ profile.display_name }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" value="{{ profile.email or '' }}" disabled>
+            </div>
+            
+            <div class="form-group">
+                <label>Member Since</label>
+                <input type="text" value="{{ profile.created_at.strftime('%Y-%m-%d') if profile.created_at else 'N/A' }}" disabled>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        </form>
+        
+        <div class="profile-actions">
+            <a href="{{ url_for('menu') }}" class="btn btn-secondary">Back to Menu</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

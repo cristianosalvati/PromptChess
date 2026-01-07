@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}Menu - PromptChess{% endblock %}
+
+{% block content %}
+<div class="menu-container">
+    <div class="welcome-section">
+        <h1>Welcome, {{ profile.display_name if profile else username }}!</h1>
+        <div class="player-stats">
+            {% if profile %}
+            <span class="stat">ELO: {{ profile.elo_rating }}</span>
+            <span class="stat">Games: {{ profile.games_played }}</span>
+            <span class="stat">Wins: {{ profile.games_won }}</span>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="menu-grid">
+        <div class="menu-card main-action">
+            <h2>New Game</h2>
+            <p>Start a new chess match against the AI</p>
+            <form action="{{ url_for('new_game') }}" method="post">
+                <button type="submit" class="btn btn-primary btn-large">Start Game</button>
+            </form>
+        </div>
+        
+        <div class="menu-card">
+            <h2>Profile</h2>
+            <p>View and edit your player profile</p>
+            <a href="{{ url_for('profile') }}" class="btn btn-secondary">View Profile</a>
+        </div>
+        
+        <div class="menu-card">
+            <h2>Recent Games</h2>
+            {% if recent_games %}
+            <ul class="game-list">
+                {% for game in recent_games[:5] %}
+                <li>
+                    <span class="game-date">{{ game.created_at.strftime('%Y-%m-%d') if game.created_at else 'N/A' }}</span>
+                    <span class="game-status {{ game.status }}">{{ game.status }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="no-games">No games yet. Start your first match!</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

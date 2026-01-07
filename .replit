@@ -16,15 +16,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Flask Server"
+args = "PromptChess Webapp"
 
 [[workflows.workflow]]
-name = "Flask Server"
+name = "PromptChess Webapp"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python openai_proxy_service.py"
+args = "python webapp/app.py"
 waitForPort = 5000
 
 [workflows.workflow.metadata]

@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+
+{% block title %}Game - PromptChess{% endblock %}
+
+{% block content %}
+<div class="game-container">
+    <div class="game-header">
+        <h1>Chess Game</h1>
+        <span class="turn-indicator">Turn: {{ current_turn|capitalize }}</span>
+    </div>
+    
+    <div class="game-layout">
+        <div class="board-section">
+            <div class="chess-board" id="chessBoard">
+                <!-- Board will be rendered here -->
+            </div>
+        </div>
+        
+        <div class="game-panel">
+            <div class="move-input">
+                <h3>Your Move (White)</h3>
+                <form id="moveForm">
+                    <div class="form-group">
+                        <label for="piece">Piece</label>
+                        <select id="piece" name="piece">
+                            <option value="P">Pawn</option>
+                            <option value="N">Knight</option>
+                            <option value="B">Bishop</option>
+                            <option value="R">Rook</option>
+                            <option value="Q">Queen</option>
+                            <option value="K">King</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="from_sq">From</label>
+                            <input type="text" id="from_sq" name="from_sq" placeholder="e2" maxlength="2">
+                        </div>
+                        <div class="form-group">
+                            <label for="to_sq">To</label>
+                            <input type="text" id="to_sq" name="to_sq" placeholder="e4" maxlength="2">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Make Move</button>
+                </form>
+            </div>
+            
+            <div class="move-history">
+                <h3>Move History</h3>
+                <div class="history-list" id="historyList">
+                    {% for move in move_history %}
+                    <div class="move-entry">
+                        <span class="move-num">{{ move.move_number }}.</span>
+                        <span class="move-notation">{{ move.piece }} {{ move.from }}-{{ move.to }}</span>
+                    </div>
+                    {% else %}
+                    <p class="no-moves">No moves yet</p>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="game-actions">
+                <a href="{{ url_for('menu') }}" class="btn btn-secondary">Exit Game</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const sessionId = "{{ session_id }}";
+    const boardState = {{ board_state|tojson|safe }};
+    
+    function renderBoard() {
+        const board = document.getElementById('chessBoard');
+        board.innerHTML = '';
+        
+        const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+        const ranks = [8, 7, 6, 5, 4, 3, 2, 1];
+        
+        for (let r of ranks) {
+            for (let f of files) {
+                const sq = document.createElement('div');
+                sq.className = 'square ' + ((files.indexOf(f) + r) % 2 === 0 ? 'dark' : 'light');
+                sq.dataset.square = f + r;
+                
+                const piece = getPieceAt(f, r);
+                if (piece) {
+                    sq.innerHTML = piece;
+                }
+                
+                board.appendChild(sq);
+            }
+        }
+    }
+    
+    function getPieceAt(file, rank) {
+        const pieceMap = {
+            'pedoni': ['P', 'p'],
+            'cavalli': ['N', 'n'],
+            'alfieri': ['B', 'b'],
+            'torri': ['R', 'r'],
+            'regina': ['Q', 'q'],
+            're': ['K', 'k']
+        };
+        
+        const symbols = {
+            'P': '\u2659', 'N': '\u2658', 'B': '\u2657', 'R': '\u2656', 'Q': '\u2655', 'K': '\u2654',
+            'p': '\u265F', 'n': '\u265E', 'b': '\u265D', 'r': '\u265C', 'q': '\u265B', 'k': '\u265A'
+        };
+        
+        const sq = file + rank;
+        
+        for (let pieceType in pieceMap) {
+            if (boardState.bianchi[pieceType] && boardState.bianchi[pieceType].includes(sq)) {
+                return symbols[pieceMap[pieceType][0]];
+            }
+            if (boardState.neri[pieceType] && boardState.neri[pieceType].includes(sq)) {
+                return symbols[pieceMap[pieceType][1]];
+            }
+        }
+        
+        return null;
+    }
+    
+    renderBoard();
+</script>
+{% endblock %}

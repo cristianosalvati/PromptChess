@@ -1,20 +1,28 @@
 {% extends 'base.html' %}
 
-{% block title %}Login - Flask Webapp {% endblock %}
+{% block title %}Login - PromptChess{% endblock %}
 
 {% block content %}
-<div class="login-container">
-    <h1>Login</h1>
-    <form action="/login" method="post">
-        <div class="form-group">
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required>
+<div class="auth-container">
+    <div class="auth-card">
+        <h1>Login</h1>
+        <p class="auth-subtitle">Enter your credentials to play</p>
+        
+        <form action="{{ url_for('login') }}" method="post">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+        
+        <div class="auth-footer">
+            <p>Don't have an account? <a href="{{ url_for('register') }}">Register</a></p>
         </div>
-        <div class="form-group">
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
-        </div>
-        <button type="submit">Login</button>
-    </form>
+    </div>
 </div>
 {% endblock %}
