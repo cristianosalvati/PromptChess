@@ -3,6 +3,88 @@
 {% block title %}Game - PromptChess{% endblock %}
 
 {% block content %}
+<style>
+    .ai-comment {
+        background: #f8f9fa;
+        border-left: 4px solid #3498db;
+        padding: 10px 15px;
+        margin-bottom: 15px;
+        border-radius: 4px;
+        font-style: italic;
+        color: #555;
+        min-height: 20px;
+    }
+    .ai-comment:empty::before {
+        content: "L'AI commenterà le mosse qui...";
+        color: #999;
+    }
+    .board-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    .files-row {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 5px;
+        margin-left: 25px;
+    }
+    .file-label {
+        width: 50px;
+        text-align: center;
+        font-weight: bold;
+        color: #c0392b;
+        font-size: 16px;
+    }
+    .board-with-ranks {
+        display: flex;
+    }
+    .ranks-column {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        margin-right: 5px;
+    }
+    .rank-label {
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: #c0392b;
+        font-size: 16px;
+        width: 20px;
+    }
+    .move-entry {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+    }
+    .move-entry.white-move {
+        background: #fff;
+    }
+    .move-entry.black-move {
+        background: #f5f5f5;
+    }
+    .move-player {
+        font-size: 11px;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+    .move-player.white {
+        color: #27ae60;
+    }
+    .move-player.black {
+        color: #e74c3c;
+    }
+    .ai-message {
+        display: block;
+        font-size: 11px;
+        color: #e74c3c;
+        margin-top: 4px;
+        font-style: italic;
+    }
+</style>
+
 <div class="game-container">
     <div class="game-header">
         <h1>Chess Game</h1>
@@ -11,8 +93,32 @@
     
     <div class="game-layout">
         <div class="board-section">
-            <div class="chess-board" id="chessBoard">
-                <!-- Board will be rendered here -->
+            <div class="ai-comment" id="aiComment"></div>
+            
+            <div class="board-wrapper">
+                <div class="files-row">
+                    <div class="file-label">A</div>
+                    <div class="file-label">B</div>
+                    <div class="file-label">C</div>
+                    <div class="file-label">D</div>
+                    <div class="file-label">E</div>
+                    <div class="file-label">F</div>
+                    <div class="file-label">G</div>
+                    <div class="file-label">H</div>
+                </div>
+                <div class="board-with-ranks">
+                    <div class="ranks-column">
+                        <div class="rank-label">8</div>
+                        <div class="rank-label">7</div>
+                        <div class="rank-label">6</div>
+                        <div class="rank-label">5</div>
+                        <div class="rank-label">4</div>
+                        <div class="rank-label">3</div>
+                        <div class="rank-label">2</div>
+                        <div class="rank-label">1</div>
+                    </div>
+                    <div class="chess-board" id="chessBoard"></div>
+                </div>
             </div>
         </div>
         
@@ -49,9 +155,13 @@
                 <h3>Move History</h3>
                 <div class="history-list" id="historyList">
                     {% for move in move_history %}
-                    <div class="move-entry">
+                    <div class="move-entry {{ 'white-move' if move.player == 'white' else 'black-move' }}">
                         <span class="move-num">{{ move.move_number }}.</span>
                         <span class="move-notation">{{ move.piece }} {{ move.from }}-{{ move.to }}</span>
+                        <span class="move-player {{ move.player }}">{{ '(WHITE)' if move.player == 'white' else '(BLACK)' }}</span>
+                        {% if move.ai_message %}
+                        <span class="ai-message">Messaggio avversario: "{{ move.ai_message }}"</span>
+                        {% endif %}
                     </div>
                     {% else %}
                     <p class="no-moves">No moves yet</p>
@@ -70,6 +180,8 @@
     const sessionId = "{{ session_id }}";
     let boardState = {{ board_state|tojson|safe }};
     let currentTurn = "{{ current_turn }}";
+    let lastAiComment = "";
+    let lastAiMessage = "";
     
     function renderBoard() {
         const board = document.getElementById('chessBoard');
@@ -125,12 +237,36 @@
         return null;
     }
     
-    function updateHistory(moveHistory) {
+    function updateAiComment(comment) {
+        const commentBox = document.getElementById('aiComment');
+        if (comment) {
+            commentBox.textContent = 'Commento: "' + comment + '"';
+        }
+    }
+    
+    function updateHistory(moveHistory, aiMessage) {
         const historyList = document.getElementById('historyList');
         if (moveHistory && moveHistory.length > 0) {
-            historyList.innerHTML = moveHistory.map(m => 
-                `<div class="move-entry"><span class="move-num">${m.move_number}.</span><span class="move-notation">${m.piece} ${m.from}-${m.to}</span></div>`
-            ).join('');
+            historyList.innerHTML = moveHistory.map((m, idx) => {
+                const isBlack = m.player === 'black';
+                const playerClass = isBlack ? 'black-move' : 'white-move';
+                const playerLabel = isBlack ? '(BLACK)' : '(WHITE)';
+                const playerColor = isBlack ? 'black' : 'white';
+                
+                let aiMsgHtml = '';
+                if (isBlack && m.ai_message) {
+                    aiMsgHtml = `<span class="ai-message">Messaggio avversario: "${m.ai_message}"</span>`;
+                } else if (isBlack && idx === moveHistory.length - 1 && aiMessage) {
+                    aiMsgHtml = `<span class="ai-message">Messaggio avversario: "${aiMessage}"</span>`;
+                }
+                
+                return `<div class="move-entry ${playerClass}">
+                    <span class="move-num">${m.move_number}.</span>
+                    <span class="move-notation">${m.piece} ${m.from}-${m.to}</span>
+                    <span class="move-player ${playerColor}">${playerLabel}</span>
+                    ${aiMsgHtml}
+                </div>`;
+            }).join('');
         }
     }
     
@@ -163,7 +299,12 @@
                 boardState = data.board_state;
                 currentTurn = data.current_turn;
                 renderBoard();
-                updateHistory(data.move_history);
+                
+                if (data.ai_comment) {
+                    updateAiComment(data.ai_comment);
+                }
+                
+                updateHistory(data.move_history, data.ai_message);
                 
                 document.getElementById('from_sq').value = '';
                 document.getElementById('to_sq').value = '';

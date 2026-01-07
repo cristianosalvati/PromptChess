@@ -102,6 +102,7 @@ class GameSession:
             'piece': move.get('piece'),
             'from': move.get('from'),
             'to': move.get('to'),
+            'ai_message': move.get('ai_message', ''),
             'timestamp': datetime.utcnow().isoformat()
         })
         
