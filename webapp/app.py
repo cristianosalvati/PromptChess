@@ -195,6 +195,112 @@ def health():
     })
 
 
+@app.route('/api/game/<session_id>/move', methods=['POST'])
+@login_required
+def api_make_move(session_id):
+    sm = get_session_manager()
+    game_session = sm.get_session(session_id)
+    
+    if not game_session:
+        return jsonify({'success': False, 'error': 'Game session not found'}), 404
+    
+    if game_session.username != session.get('username'):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    if game_session.current_turn != 'white':
+        return jsonify({'success': False, 'error': 'Not your turn'}), 400
+    
+    data = request.get_json() or {}
+    piece = data.get('piece', 'P')
+    from_sq = data.get('from_sq', '')
+    to_sq = data.get('to_sq', '')
+    
+    if not from_sq or not to_sq:
+        return jsonify({'success': False, 'error': 'Missing move coordinates'}), 400
+    
+    import json as json_module
+    game_session.record_move({
+        'piece': piece,
+        'from': from_sq,
+        'to': to_sq
+    })
+    
+    prompt = f'''
+Mossa dei Bianchi: {piece} {from_sq}-{to_sq}
+Stato scacchiera attuale:
+{json_module.dumps(game_session.board_state, indent=2)}
+
+Proponi la tua mossa per i Neri e aggiorna lo stato della scacchiera.
+'''
+    
+    try:
+        ai_response = game_session.send_to_llm(prompt, model='gpt-4.1-nano', temperature=0.7)
+        
+        try:
+            parsed = json_module.loads(ai_response)
+            ai_move = parsed.get('mossa_proposta', '')
+            
+            if 'neri' in parsed and 'bianchi' in parsed:
+                game_session.board_state = {
+                    'neri': parsed['neri'],
+                    'bianchi': parsed['bianchi']
+                }
+            
+            if ai_move:
+                parts = ai_move.replace('-', ' ').split()
+                if len(parts) >= 2:
+                    game_session.record_move({
+                        'piece': 'p',
+                        'from': parts[0],
+                        'to': parts[1] if len(parts) > 1 else parts[0]
+                    })
+            
+            sm.save_session(game_session)
+            
+            return jsonify({
+                'success': True,
+                'ai_move': ai_move,
+                'board_state': game_session.board_state,
+                'current_turn': game_session.current_turn,
+                'move_history': game_session.move_history
+            })
+            
+        except json_module.JSONDecodeError:
+            return jsonify({
+                'success': False,
+                'error': 'AI returned invalid JSON',
+                'raw_response': ai_response[:500]
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/game/<session_id>/state')
+@login_required
+def api_game_state(session_id):
+    sm = get_session_manager()
+    game_session = sm.get_session(session_id)
+    
+    if not game_session:
+        return jsonify({'success': False, 'error': 'Game session not found'}), 404
+    
+    if game_session.username != session.get('username'):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    return jsonify({
+        'success': True,
+        'session_id': session_id,
+        'board_state': game_session.board_state,
+        'current_turn': game_session.current_turn,
+        'move_history': game_session.move_history,
+        'status': game_session.status
+    })
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)

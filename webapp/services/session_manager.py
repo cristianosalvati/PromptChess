@@ -2,7 +2,8 @@ import os
 import uuid
 import json
 from datetime import datetime
-from pymongo import MongoClient
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 from urllib.parse import quote_plus
 from openai import OpenAI
 
@@ -136,9 +137,9 @@ class SessionManager:
         user_escaped = quote_plus(user)
         password_escaped = quote_plus(password)
         
-        uri = f'mongodb://{user_escaped}:{password_escaped}@atlas-sql-6858308155a50c4c1cab0c84-zvdtc0.a.query.mongodb.net/promptchess?ssl=true&authSource=admin'
+        uri = f'mongodb+srv://{user_escaped}:{password_escaped}@cluster0.ljvmyxi.mongodb.net/?appName=Cluster0'
         
-        self.client = MongoClient(uri, serverSelectionTimeoutMS=10000)
+        self.client = MongoClient(uri, server_api=ServerApi('1'))
         self.db = self.client['promptchess']
         self.games_collection = self.db['games']
         self.moves_collection = self.db['moves']
@@ -180,7 +181,43 @@ Stato scacchiera iniziale: {board_json}''')
         return session
     
     def get_session(self, session_id: str) -> GameSession:
-        return self.active_sessions.get(session_id)
+        if session_id in self.active_sessions:
+            return self.active_sessions[session_id]
+        
+        game_doc = self.games_collection.find_one({'session_id': session_id})
+        if not game_doc:
+            return None
+        
+        session = GameSession(
+            session_id=session_id,
+            user_id=game_doc.get('user_id', ''),
+            username=game_doc.get('username', '')
+        )
+        session.board_state = game_doc.get('board_state', session.init_board())
+        session.status = game_doc.get('status', 'active')
+        session.current_turn = game_doc.get('current_turn', 'white')
+        
+        moves = list(self.moves_collection.find({'session_id': session_id}).sort('move_number', 1))
+        session.move_history = [{
+            'move_number': m.get('move_number'),
+            'player': m.get('player'),
+            'piece': m.get('piece'),
+            'from': m.get('from'),
+            'to': m.get('to'),
+            'timestamp': m.get('timestamp', '').isoformat() if hasattr(m.get('timestamp', ''), 'isoformat') else str(m.get('timestamp', ''))
+        } for m in moves]
+        
+        board_json = json.dumps(session.board_state, indent=4)
+        session.add_system_message(f'''Regole:
+- Tu giochi dalla parte dei Neri.
+- Devi rispondere alla mossa proposta dai Bianchi.
+Stato scacchiera: {board_json}''')
+        session.add_system_message('''Output: Restituisci esclusivamente un oggetto JSON con:
+- "mossa_proposta" (es. "e7-e5")
+- "bianchi" e "neri" aggiornati''')
+        
+        self.active_sessions[session_id] = session
+        return session
     
     def get_user_sessions(self, username: str) -> list:
         sessions = self.games_collection.find({

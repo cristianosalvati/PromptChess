@@ -68,7 +68,8 @@
 
 <script>
     const sessionId = "{{ session_id }}";
-    const boardState = {{ board_state|tojson|safe }};
+    let boardState = {{ board_state|tojson|safe }};
+    let currentTurn = "{{ current_turn }}";
     
     function renderBoard() {
         const board = document.getElementById('chessBoard');
@@ -91,6 +92,8 @@
                 board.appendChild(sq);
             }
         }
+        
+        document.querySelector('.turn-indicator').textContent = 'Turn: ' + currentTurn.charAt(0).toUpperCase() + currentTurn.slice(1);
     }
     
     function getPieceAt(file, rank) {
@@ -111,16 +114,69 @@
         const sq = file + rank;
         
         for (let pieceType in pieceMap) {
-            if (boardState.bianchi[pieceType] && boardState.bianchi[pieceType].includes(sq)) {
+            if (boardState.bianchi && boardState.bianchi[pieceType] && boardState.bianchi[pieceType].includes(sq)) {
                 return symbols[pieceMap[pieceType][0]];
             }
-            if (boardState.neri[pieceType] && boardState.neri[pieceType].includes(sq)) {
+            if (boardState.neri && boardState.neri[pieceType] && boardState.neri[pieceType].includes(sq)) {
                 return symbols[pieceMap[pieceType][1]];
             }
         }
         
         return null;
     }
+    
+    function updateHistory(moveHistory) {
+        const historyList = document.getElementById('historyList');
+        if (moveHistory && moveHistory.length > 0) {
+            historyList.innerHTML = moveHistory.map(m => 
+                `<div class="move-entry"><span class="move-num">${m.move_number}.</span><span class="move-notation">${m.piece} ${m.from}-${m.to}</span></div>`
+            ).join('');
+        }
+    }
+    
+    document.getElementById('moveForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const piece = document.getElementById('piece').value;
+        const from_sq = document.getElementById('from_sq').value.toLowerCase();
+        const to_sq = document.getElementById('to_sq').value.toLowerCase();
+        
+        if (!from_sq || !to_sq) {
+            alert('Please enter both From and To squares');
+            return;
+        }
+        
+        const submitBtn = e.target.querySelector('button');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Waiting for AI...';
+        
+        try {
+            const response = await fetch(`/api/game/${sessionId}/move`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({piece, from_sq, to_sq})
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                boardState = data.board_state;
+                currentTurn = data.current_turn;
+                renderBoard();
+                updateHistory(data.move_history);
+                
+                document.getElementById('from_sq').value = '';
+                document.getElementById('to_sq').value = '';
+            } else {
+                alert('Error: ' + data.error);
+            }
+        } catch (err) {
+            alert('Network error: ' + err.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Make Move';
+        }
+    });
     
     renderBoard();
 </script>

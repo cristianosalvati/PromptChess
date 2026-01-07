@@ -2,7 +2,8 @@ import os
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from pymongo import MongoClient
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 from urllib.parse import quote_plus
 
 
@@ -18,9 +19,9 @@ class LoginService:
         user_escaped = quote_plus(user)
         password_escaped = quote_plus(password)
         
-        uri = f'mongodb://{user_escaped}:{password_escaped}@atlas-sql-6858308155a50c4c1cab0c84-zvdtc0.a.query.mongodb.net/promptchess?ssl=true&authSource=admin'
+        uri = f'mongodb+srv://{user_escaped}:{password_escaped}@cluster0.ljvmyxi.mongodb.net/?appName=Cluster0'
         
-        self.client = MongoClient(uri, serverSelectionTimeoutMS=10000)
+        self.client = MongoClient(uri, server_api=ServerApi('1'))
         self.db = self.client['promptchess']
         self.users = self.db['users']
         self.sessions_collection = self.db['sessions']
